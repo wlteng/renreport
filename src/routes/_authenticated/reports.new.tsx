@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/useSession";
 import { useProjects } from "@/hooks/useData";
-import { REPORT_TYPES } from "@/lib/roles";
+import { REPORT_TYPES, type ReportType } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/reports/new")({
   head: () => ({
@@ -46,7 +46,7 @@ function NewReport() {
         user_id: user!.id,
         project_id: projectId || null,
         report_date: date,
-        report_type: type,
+        report_type: type as ReportType,
         title,
         content,
         hours_spent: Number(hours || 0),

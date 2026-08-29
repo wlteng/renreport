@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/integrations/supabase/client";
-import type { AppRole } from "@/lib/roles";
+import type { AppRole, ReportType } from "@/lib/roles";
 
 export type Department = { id: string; name: string; description: string | null };
 
@@ -119,7 +119,7 @@ export function useVisibleReports(filters: ReportFilters) {
       if (filters.to) q = q.lte("report_date", filters.to);
       if (filters.userId) q = q.eq("user_id", filters.userId);
       if (filters.projectId) q = q.eq("project_id", filters.projectId);
-      if (filters.type) q = q.eq("report_type", filters.type);
+      if (filters.type) q = q.eq("report_type", filters.type as ReportType);
       const { data, error } = await q
         .order("report_date", { ascending: false })
         .order("created_at", { ascending: false })
