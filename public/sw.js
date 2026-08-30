@@ -1,4 +1,4 @@
-const CACHE_NAME = "ren-report-assets-v1";
+const CACHE_NAME = "ren-report-assets-v2";
 const CORE_ASSETS = [
   "/manifest.webmanifest",
   "/icons/icon-192.png",
