@@ -35,6 +35,103 @@ export type Database = {
         }
         Relationships: []
       }
+      expenses: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          currency: string
+          description: string
+          expense_date: string
+          id: string
+          project_id: string
+          receipt_url: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          submitted_by: string
+          updated_at: string
+          vendor: string | null
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string
+          currency?: string
+          description: string
+          expense_date?: string
+          id?: string
+          project_id: string
+          receipt_url?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          submitted_by: string
+          updated_at?: string
+          vendor?: string | null
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          currency?: string
+          description?: string
+          expense_date?: string
+          id?: string
+          project_id?: string
+          receipt_url?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          submitted_by?: string
+          updated_at?: string
+          vendor?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permissions: {
+        Row: {
+          created_at: string
+          description: string
+          key: string
+          label: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          key: string
+          label: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          key?: string
+          label?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -120,37 +217,58 @@ export type Database = {
       }
       projects: {
         Row: {
+          area_km2: number | null
           color: string | null
           created_at: string
           department_id: string | null
           description: string | null
           id: string
+          legal_name: string | null
+          license_status: string
+          location: string | null
+          mining_method: string
           name: string
           owner_id: string | null
+          project_code: string | null
+          reserve_kg: number | null
           status: Database["public"]["Enums"]["project_status"]
           updated_at: string
           url: string | null
         }
         Insert: {
+          area_km2?: number | null
           color?: string | null
           created_at?: string
           department_id?: string | null
           description?: string | null
           id?: string
+          legal_name?: string | null
+          license_status?: string
+          location?: string | null
+          mining_method?: string
           name: string
           owner_id?: string | null
+          project_code?: string | null
+          reserve_kg?: number | null
           status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string
           url?: string | null
         }
         Update: {
+          area_km2?: number | null
           color?: string | null
           created_at?: string
           department_id?: string | null
           description?: string | null
           id?: string
+          legal_name?: string | null
+          license_status?: string
+          location?: string | null
+          mining_method?: string
           name?: string
           owner_id?: string | null
+          project_code?: string | null
+          reserve_kg?: number | null
           status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string
           url?: string | null
@@ -181,12 +299,16 @@ export type Database = {
           id: string
           image_urls: string[] | null
           links: string | null
+          output_quantity: number | null
+          output_unit: string | null
           project_id: string | null
           report_date: string
           report_type: Database["public"]["Enums"]["report_type"]
+          shift: string
           title: string
           updated_at: string
           user_id: string
+          work_status: string
         }
         Insert: {
           blockers?: string | null
@@ -196,12 +318,16 @@ export type Database = {
           id?: string
           image_urls?: string[] | null
           links?: string | null
+          output_quantity?: number | null
+          output_unit?: string | null
           project_id?: string | null
           report_date?: string
           report_type?: Database["public"]["Enums"]["report_type"]
+          shift?: string
           title: string
           updated_at?: string
           user_id: string
+          work_status?: string
         }
         Update: {
           blockers?: string | null
@@ -211,12 +337,16 @@ export type Database = {
           id?: string
           image_urls?: string[] | null
           links?: string | null
+          output_quantity?: number | null
+          output_unit?: string | null
           project_id?: string | null
           report_date?: string
           report_type?: Database["public"]["Enums"]["report_type"]
+          shift?: string
           title?: string
           updated_at?: string
           user_id?: string
+          work_status?: string
         }
         Relationships: [
           {
@@ -261,6 +391,76 @@ export type Database = {
           target_user_id?: string
         }
         Relationships: []
+      }
+      role_permissions: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          permission_key: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          permission_key: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          permission_key?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_permissions_permission_key_fkey"
+            columns: ["permission_key"]
+            isOneToOne: false
+            referencedRelation: "permissions"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      staff_compensation: {
+        Row: {
+          created_at: string
+          currency: string
+          salary_amount: number
+          salary_type: string
+          standard_hours: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          salary_amount?: number
+          salary_type?: string
+          standard_hours?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          salary_amount?: number
+          salary_type?: string
+          standard_hours?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_compensation_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -314,6 +514,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      has_permission: {
+        Args: { _permission_key: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -336,6 +540,14 @@ export type Database = {
         | "meeting"
         | "support"
         | "other"
+        | "site_operations"
+        | "exploration"
+        | "extraction"
+        | "processing"
+        | "logistics"
+        | "maintenance"
+        | "safety"
+        | "administration"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -474,6 +686,14 @@ export const Constants = {
         "meeting",
         "support",
         "other",
+        "site_operations",
+        "exploration",
+        "extraction",
+        "processing",
+        "logistics",
+        "maintenance",
+        "safety",
+        "administration",
       ],
     },
   },
