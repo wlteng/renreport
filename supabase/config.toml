@@ -1,5 +1,9 @@
 project_id = "ubhonbarxxvvqichlkjw"
 
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
 [auth]
 enable_signup = false
 
