@@ -79,14 +79,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "JJ Report — Daily work reporting" },
+      { name: "theme-color", content: "#242321" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "default" },
+      { name: "apple-mobile-web-app-title", content: "Ren Report" },
+      { title: "Ren Report — Gold mining operations" },
       {
         name: "description",
         content:
-          "JJ Report: staff log daily work, managers and bosses review it, admins control roles and access.",
+          "Ren Report: gold mining work logs, project expenses, staff administration and role-based access.",
       },
-      { property: "og:title", content: "JJ Report" },
-      { property: "og:description", content: "Daily work reporting with role-based access." },
+      {
+        name: "robots",
+        content: "noindex, nofollow, noarchive, nosnippet, noimageindex",
+      },
+      { property: "og:title", content: "Ren Report" },
+      { property: "og:description", content: "Gold mining operations with role-based access." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -99,6 +108,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
+      { rel: "apple-touch-icon", href: "/icons/apple-touch-icon.png", sizes: "180x180" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
     ],
   }),
   shellComponent: RootShell,
@@ -133,6 +145,11 @@ function RootComponent() {
     });
     return () => sub.subscription.unsubscribe();
   }, [router, queryClient]);
+
+  useEffect(() => {
+    if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
+    void navigator.serviceWorker.register("/sw.js");
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

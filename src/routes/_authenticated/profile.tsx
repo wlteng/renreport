@@ -15,10 +15,10 @@ import { ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/roles";
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({
     meta: [
-      { title: "Profile — JJ Report" },
+      { title: "Profile — Ren Report" },
       { name: "description", content: "Your account details and current access level." },
-      { property: "og:title", content: "Profile — JJ Report" },
-      { property: "og:description", content: "Manage your JJ Report account details." },
+      { property: "og:title", content: "Profile — Ren Report" },
+      { property: "og:description", content: "Manage your Ren Report account details." },
     ],
   }),
   component: ProfilePage,

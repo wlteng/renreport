@@ -4,20 +4,19 @@ import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/AppShell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useMe } from "@/hooks/useSession";
 import { usePeople, useProjects, useVisibleReports } from "@/hooks/useData";
-import { can, REPORT_TYPES, REPORT_TYPE_LABEL } from "@/lib/roles";
+import { REPORT_TYPES, REPORT_TYPE_LABEL, SHIFT_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/review")({
   head: () => ({
     meta: [
-      { title: "Review — JJ Report" },
+      { title: "Staff activity — Ren Report" },
       {
         name: "description",
         content: "Read daily reports across the team, filtered by person, project, type and date.",
       },
-      { property: "og:title", content: "Review — JJ Report" },
-      { property: "og:description", content: "Read-only oversight of daily work reports." },
+      { property: "og:title", content: "Staff activity — Ren Report" },
+      { property: "og:description", content: "All-staff mining work submission feed." },
     ],
   }),
   component: Review,
@@ -30,7 +29,6 @@ function isoDaysAgo(days: number) {
 }
 
 function Review() {
-  const { roles } = useMe();
   const people = usePeople();
   const projects = useProjects();
 
@@ -62,25 +60,11 @@ function Review() {
 
   const totalHours = (reports.data ?? []).reduce((s, r) => s + Number(r.hours_spent), 0);
 
-  if (!can.viewTeamReports(roles)) {
-    return (
-      <div className="logbook-card p-10 text-center">
-        <p className="text-sm text-muted-foreground">
-          You don't have permission to review other people's reports.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <>
       <PageHeader
-        title="Review"
-        subtitle={
-          can.viewAllReports(roles)
-            ? "Read-only view of every report in the company."
-            : "Read-only view of reports from your department."
-        }
+        title="Staff activity"
+        subtitle="The all-staff mining work submission feed, enforced by database capability policies."
       />
 
       <div className="logbook-card mb-6 grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-5">
@@ -173,6 +157,10 @@ function Review() {
         </section>
       ) : null}
 
+      {reports.isLoading ? (
+        <p className="mb-4 text-sm text-muted-foreground">Loading staff activity…</p>
+      ) : null}
+
       <section>
         <h2 className="mb-3 text-sm font-semibold">Entries</h2>
         <div className="logbook-card divide-y divide-border">
@@ -184,11 +172,17 @@ function Review() {
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {personName(r.user_id)} · {REPORT_TYPE_LABEL[r.report_type]} ·{" "}
-                {projectName(r.project_id)} · {Number(r.hours_spent).toFixed(1)}h
+                {projectName(r.project_id)} · {WORK_STATUS_LABEL[r.work_status]} ·{" "}
+                {SHIFT_LABEL[r.shift]} · {Number(r.hours_spent).toFixed(1)}h
               </p>
               <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
                 {r.content}
               </p>
+              {r.output_quantity !== null ? (
+                <p className="mt-2 text-xs font-medium">
+                  Output: {Number(r.output_quantity).toLocaleString()} {r.output_unit}
+                </p>
+              ) : null}
               {r.blockers ? (
                 <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
                   Blocker: {r.blockers}

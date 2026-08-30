@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { User } from "@supabase/supabase-js";
 
 import { supabase } from "@/integrations/supabase/client";
-import type { AppRole } from "@/lib/roles";
+import type { AppRole, PermissionKey } from "@/lib/roles";
 
 export function useUser() {
   const [user, setUser] = useState<User | null>(null);
@@ -70,10 +70,25 @@ export function useMe() {
     },
   });
 
+  const permissions = useQuery({
+    queryKey: ["my-permissions", [...(roles.data ?? [])].sort()],
+    enabled: !!user && (roles.data?.length ?? 0) > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("role_permissions")
+        .select("permission_key")
+        .in("role", roles.data!)
+        .eq("enabled", true);
+      if (error) throw error;
+      return [...new Set((data ?? []).map((row) => row.permission_key as PermissionKey))];
+    },
+  });
+
   return {
     user,
     profile: profile.data ?? null,
     roles: roles.data ?? [],
-    loading: loading || profile.isLoading || roles.isLoading,
+    permissions: permissions.data,
+    loading: loading || profile.isLoading || roles.isLoading || permissions.isLoading,
   };
 }

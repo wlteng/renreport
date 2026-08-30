@@ -1,1 +1,7 @@
 project_id = "ubhonbarxxvvqichlkjw"
+
+[auth]
+enable_signup = false
+
+[functions.admin-create-user]
+verify_jwt = true

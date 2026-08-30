@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * JJ Report design system — "logbook" style.
+ * Ren Report design system — "logbook" style.
  * Warm paper background, near-black ink, hairline borders, soft cards.
  * Never hardcode colors in components; use these tokens.
  */

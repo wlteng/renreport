@@ -1,32 +1,44 @@
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   BarChart3,
   FileText,
-  FolderKanban,
   Home,
   LogOut,
   PenLine,
+  Pickaxe,
+  ReceiptText,
   Settings,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { supabase } from "@/integrations/supabase/client";
-import { cn } from "@/lib/utils";
-import { can, highestRole, ROLE_LABEL, type AppRole } from "@/lib/roles";
 import { useMe } from "@/hooks/useSession";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  hasCapability,
+  highestRole,
+  ROLE_LABEL,
+  type AppRole,
+  type PermissionKey,
+} from "@/lib/roles";
+import { cn } from "@/lib/utils";
 
 type NavItem = { to: string; label: string; icon: LucideIcon };
 
-export function navItemsFor(roles: AppRole[]): NavItem[] {
+function navItemsFor(roles: AppRole[], permissions?: PermissionKey[]): NavItem[] {
   const items: NavItem[] = [{ to: "/dashboard", label: "Home", icon: Home }];
-  items.push({ to: "/reports/new", label: "Write", icon: PenLine });
-  items.push({ to: "/reports", label: "My log", icon: FileText });
-  if (can.viewTeamReports(roles)) items.push({ to: "/review", label: "Review", icon: BarChart3 });
-  items.push({ to: "/projects", label: "Projects", icon: FolderKanban });
-  if (can.administer(roles)) items.push({ to: "/admin", label: "Admin", icon: Users });
+  if (hasCapability(permissions, "submit_work", roles)) {
+    items.push({ to: "/reports/new", label: "Submit work", icon: PenLine });
+  }
+  items.push({ to: "/reports", label: "My work", icon: FileText });
+  if (hasCapability(permissions, "view_staff_feed", roles)) {
+    items.push({ to: "/review", label: "Staff activity", icon: BarChart3 });
+  }
+  items.push({ to: "/projects", label: "Mine projects", icon: Pickaxe });
+  items.push({ to: "/expenses", label: "Expenses", icon: ReceiptText });
+  if (roles.includes("admin")) items.push({ to: "/admin", label: "Admin", icon: Users });
   items.push({ to: "/profile", label: "Profile", icon: Settings });
   return items;
 }
@@ -52,11 +64,11 @@ export function PageHeader({
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { profile, roles } = useMe();
+  const { profile, roles, permissions } = useMe();
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const items = navItemsFor(roles);
+  const items = navItemsFor(roles, permissions);
 
   async function signOut() {
     await queryClient.cancelQueries();
@@ -70,10 +82,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-border bg-sidebar px-3 py-5 lg:flex">
         <div className="px-3 pb-6">
-          <div className="text-base font-semibold tracking-tight">JJ Report</div>
+          <div className="flex items-center gap-2 text-base font-semibold tracking-tight">
+            <img src="/icons/icon-192.png" alt="" className="size-8 rounded-lg" />
+            Ren Report
+          </div>
           <div className="logbook-label mt-1">
             {roles.length ? ROLE_LABEL[highestRole(roles)] : "—"}
           </div>
@@ -109,9 +123,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      {/* Mobile top bar */}
       <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-card/90 px-4 py-3 backdrop-blur lg:hidden">
-        <div className="text-sm font-semibold tracking-tight">JJ Report</div>
+        <div className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+          <img src="/icons/icon-192.png" alt="" className="size-7 rounded-md" />
+          Ren Report
+        </div>
         <button
           onClick={signOut}
           className="text-xs text-muted-foreground transition-colors hover:text-foreground"
@@ -124,14 +140,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="mx-auto w-full max-w-5xl">{children}</div>
       </main>
 
-      {/* Mobile bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around border-t border-border bg-card px-1 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pt-2 lg:hidden">
-        {items.slice(0, 5).map((item) => (
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-1 overflow-x-auto border-t border-border bg-card px-1 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pt-2 lg:hidden">
+        {items.map((item) => (
           <Link
             key={item.to}
             to={item.to}
             className={cn(
-              "flex min-w-0 flex-col items-center gap-1 px-2 py-1 text-[10px] transition-colors",
+              "flex min-w-20 flex-1 flex-col items-center gap-1 px-2 py-1 text-[10px] transition-colors",
               isActive(item.to) ? "text-foreground" : "text-muted-foreground",
             )}
           >

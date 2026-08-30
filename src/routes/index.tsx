@@ -6,16 +6,16 @@ import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "JJ Report — Daily work reporting" },
+      { title: "Ren Report — Gold mining operations" },
       {
         name: "description",
         content:
-          "Staff write daily work reports, managers review their department, bosses see everything, admins control roles.",
+          "Gold mining staff submit work logs and expenses while administrators manage projects, people, roles and compensation.",
       },
-      { property: "og:title", content: "JJ Report — Daily work reporting" },
+      { property: "og:title", content: "Ren Report — Gold mining operations" },
       {
         property: "og:description",
-        content: "Role-based daily reporting for staff, managers, bosses and admins.",
+        content: "Operations reporting and administration for gold mining investments.",
       },
     ],
   }),
@@ -26,17 +26,17 @@ const PILLARS = [
   {
     icon: ClipboardList,
     title: "Staff write",
-    body: "A fast daily entry: project, type of work, hours, what happened, blockers and links.",
+    body: "Submit mine project, shift, activity, hours, output, blockers and supporting evidence.",
   },
   {
     icon: Eye,
-    title: "Bosses read",
-    body: "Read-only oversight across everyone, filtered by person, project, type and date range.",
+    title: "Operations stay visible",
+    body: "Review all-staff activity and project expenses by person, mine, status and date range.",
   },
   {
     icon: ShieldCheck,
     title: "Admins control",
-    body: "Roles live in their own table, every grant and revoke is written to a permanent audit trail.",
+    body: "Manage staff accounts, departments, roles, permissions, salaries and mine projects.",
   },
 ];
 
@@ -44,7 +44,10 @@ function Landing() {
   return (
     <div className="min-h-screen bg-background">
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 py-5">
-        <span className="text-sm font-semibold tracking-tight">JJ Report</span>
+        <span className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+          <img src="/icons/icon-192.png" alt="" className="size-8 rounded-lg" />
+          Ren Report
+        </span>
         <Button asChild size="sm">
           <Link to="/auth">Sign in</Link>
         </Button>
@@ -52,13 +55,13 @@ function Landing() {
 
       <main className="mx-auto w-full max-w-5xl px-5 pb-20">
         <section className="py-14 sm:py-20">
-          <p className="logbook-label">Daily work log</p>
+          <p className="logbook-label">Gold mining operations log</p>
           <h1 className="mt-3 max-w-2xl text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
-            Every day's work, written down once and readable by the right people.
+            Know what is happening across every mine project, shift and expense.
           </h1>
           <p className="mt-5 max-w-xl text-base text-muted-foreground">
-            JJ Report keeps daily reporting honest: staff log the work, managers see their
-            department, bosses see the whole company, and admins decide who is who.
+            Ren Report records the work, production output, blockers, project costs and staff
+            administration behind the gold mines your team operates and invests in.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">
