@@ -11,7 +11,8 @@ export type PermissionKey =
   | "submit_expenses"
   | "view_expenses"
   | "approve_expenses"
-  | "manage_compensation";
+  | "manage_compensation"
+  | "view_audit_log";
 
 export const ROLE_ORDER: AppRole[] = ["admin", "boss", "manager", "staff"];
 
@@ -46,6 +47,7 @@ const DEFAULT_PERMISSIONS: Record<AppRole, PermissionKey[]> = {
     "view_expenses",
     "approve_expenses",
     "manage_compensation",
+    "view_audit_log",
   ],
   boss: ["manage_projects", "view_staff_feed", "view_expenses", "approve_expenses"],
   manager: ["view_staff_feed", "view_expenses"],

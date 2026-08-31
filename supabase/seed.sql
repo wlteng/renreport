@@ -18,6 +18,10 @@ INSERT INTO auth.users (
   email,
   encrypted_password,
   email_confirmed_at,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
   raw_app_meta_data,
   raw_user_meta_data,
   created_at,
@@ -32,6 +36,10 @@ VALUES
     'admin@renreport.test',
     crypt('RenReport!2026', gen_salt('bf')),
     now(),
+    '',
+    '',
+    '',
+    '',
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{"full_name":"Ariun Admin"}'::jsonb,
     now(),
@@ -45,6 +53,10 @@ VALUES
     'boss@renreport.test',
     crypt('RenReport!2026', gen_salt('bf')),
     now(),
+    '',
+    '',
+    '',
+    '',
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{"full_name":"Bat Boss"}'::jsonb,
     now(),
@@ -58,6 +70,10 @@ VALUES
     'manager@renreport.test',
     crypt('RenReport!2026', gen_salt('bf')),
     now(),
+    '',
+    '',
+    '',
+    '',
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{"full_name":"Munkh Manager"}'::jsonb,
     now(),
@@ -71,6 +87,10 @@ VALUES
     'staff@renreport.test',
     crypt('RenReport!2026', gen_salt('bf')),
     now(),
+    '',
+    '',
+    '',
+    '',
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{"full_name":"Saraa Staff"}'::jsonb,
     now(),
@@ -80,6 +100,10 @@ ON CONFLICT (id) DO UPDATE
 SET email = EXCLUDED.email,
     encrypted_password = EXCLUDED.encrypted_password,
     email_confirmed_at = EXCLUDED.email_confirmed_at,
+    confirmation_token = EXCLUDED.confirmation_token,
+    recovery_token = EXCLUDED.recovery_token,
+    email_change_token_new = EXCLUDED.email_change_token_new,
+    email_change = EXCLUDED.email_change,
     raw_app_meta_data = EXCLUDED.raw_app_meta_data,
     raw_user_meta_data = EXCLUDED.raw_user_meta_data,
     updated_at = now();
@@ -188,25 +212,25 @@ AND (user_id, role) NOT IN (
 -- Canonical test matrix. All combinations exist, including disabled cells.
 INSERT INTO public.role_permissions (role, permission_key, enabled)
 SELECT
-  role_name,
+  seeded_role.role,
   permission.key,
-  role_name = 'admin'::public.app_role
-    OR (role_name = 'boss'::public.app_role AND permission.key IN (
+  seeded_role.role = 'admin'::public.app_role
+    OR (seeded_role.role = 'boss'::public.app_role AND permission.key IN (
       'manage_projects',
       'view_staff_feed',
       'view_expenses',
       'approve_expenses'
     ))
-    OR (role_name = 'manager'::public.app_role AND permission.key IN (
+    OR (seeded_role.role = 'manager'::public.app_role AND permission.key IN (
       'view_staff_feed',
       'view_expenses'
     ))
-    OR (role_name = 'staff'::public.app_role AND permission.key IN (
+    OR (seeded_role.role = 'staff'::public.app_role AND permission.key IN (
       'submit_work',
       'view_staff_feed',
       'submit_expenses'
     ))
-FROM unnest(enum_range(NULL::public.app_role)) AS role_name
+FROM unnest(enum_range(NULL::public.app_role)) AS seeded_role(role)
 CROSS JOIN public.permissions AS permission
 ON CONFLICT (role, permission_key) DO UPDATE
 SET enabled = EXCLUDED.enabled;
@@ -378,4 +402,3 @@ SET user_id = EXCLUDED.user_id,
     shift = EXCLUDED.shift,
     output_quantity = EXCLUDED.output_quantity,
     output_unit = EXCLUDED.output_unit;
-

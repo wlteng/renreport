@@ -13,8 +13,8 @@ SET label = EXCLUDED.label,
 -- Keep every role/capability combination explicit. This makes the admin matrix
 -- deterministic and ensures every toggle is an RLS-protected UPDATE.
 INSERT INTO public.role_permissions (role, permission_key, enabled)
-SELECT role_name, permission.key, role_name = 'admin'::public.app_role
-FROM unnest(enum_range(NULL::public.app_role)) AS role_name
+SELECT seeded_role.role, permission.key, seeded_role.role = 'admin'::public.app_role
+FROM unnest(enum_range(NULL::public.app_role)) AS seeded_role(role)
 CROSS JOIN public.permissions AS permission
 ON CONFLICT (role, permission_key) DO NOTHING;
 
@@ -269,8 +269,8 @@ INSERT INTO public.admin_audit_log (
 )
 SELECT
   CASE WHEN legacy.action = 'granted' THEN 'role_granted' ELSE 'role_revoked' END,
-  legacy.actor_id,
-  legacy.target_user_id,
+  actor.id,
+  target.id,
   legacy.role,
   CASE
     WHEN legacy.action = 'granted' THEN 'Granted ' || legacy.role::text || ' role'
@@ -278,4 +278,6 @@ SELECT
   END,
   jsonb_build_object('legacy_audit_id', legacy.id),
   legacy.created_at
-FROM public.role_audit_log AS legacy;
+FROM public.role_audit_log AS legacy
+LEFT JOIN public.profiles AS actor ON actor.id = legacy.actor_id
+LEFT JOIN public.profiles AS target ON target.id = legacy.target_user_id;

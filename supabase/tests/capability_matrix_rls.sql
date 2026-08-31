@@ -1,5 +1,6 @@
 -- Run after supabase/seed.sql. The transaction rolls back all test writes.
 BEGIN;
+SELECT plan(1);
 SET LOCAL ROLE authenticated;
 
 DO $$
@@ -134,5 +135,7 @@ BEGIN
 END;
 $$;
 
+RESET ROLE;
+SELECT pass('Capability matrix matches report, audit, and matrix RLS behavior for all personas');
+SELECT * FROM finish();
 ROLLBACK;
-

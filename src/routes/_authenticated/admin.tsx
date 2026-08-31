@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useAllRoles,
@@ -56,22 +57,6 @@ export const Route = createFileRoute("/_authenticated/admin")({
   component: AdminPage,
 });
 
-function useAudit(enabled: boolean) {
-  return useQuery({
-    queryKey: ["role-audit"],
-    enabled,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("role_audit_log")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-}
-
 function AdminPage() {
   const { user, roles, permissions: myPermissions } = useMe();
   const people = usePeople();
@@ -81,9 +66,11 @@ function AdminPage() {
   const rolePermissions = useRolePermissions();
   const canCompensate = hasCapability(myPermissions, "manage_compensation", roles);
   const compensation = useCompensation(canCompensate);
-  const audit = useAudit(hasCapability(myPermissions, "manage_roles", roles));
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"people" | "departments" | "permissions" | "audit">("people");
+  const [tab, setTab] = useState<"people" | "departments" | "permissions">("people");
+  const [matrixResult, setMatrixResult] = useState<
+    { status: "accepted" | "rejected"; message: string } | undefined
+  >();
   const [deptName, setDeptName] = useState("");
   const [deptDescription, setDeptDescription] = useState("");
 
@@ -113,17 +100,35 @@ function AdminPage() {
     }) => {
       const parsed = permissionMutationSchema.safeParse(input);
       if (!parsed.success) throw new Error(firstValidationError(parsed.error));
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("role_permissions")
-        .upsert(parsed.data, { onConflict: "role,permission_key" });
-      if (error) throw error;
+        .upsert(parsed.data, { onConflict: "role,permission_key" })
+        .select("role, permission_key, enabled")
+        .single();
+      if (error) throw new Error(`Database policy rejected the change: ${error.message}`);
+      if (
+        data.role !== parsed.data.role ||
+        data.permission_key !== parsed.data.permission_key ||
+        data.enabled !== parsed.data.enabled
+      ) {
+        throw new Error("Database validation returned an unexpected capability value");
+      }
+      return data;
     },
-    onSuccess: () => {
-      toast.success("Permission updated");
+    onSuccess: (saved) => {
+      const message = `${ROLE_LABEL[saved.role as AppRole]} · ${saved.permission_key} was ${saved.enabled ? "enabled" : "disabled"}`;
+      setMatrixResult({ status: "accepted", message: `RLS accepted: ${message}` });
+      toast.success("Capability saved after database validation");
       queryClient.invalidateQueries({ queryKey: ["role-permissions"] });
       queryClient.invalidateQueries({ queryKey: ["my-permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-audit"] });
     },
-    onError: showError,
+    onError: (error) => {
+      const message =
+        error instanceof Error ? error.message : "Database policy rejected the change";
+      setMatrixResult({ status: "rejected", message });
+      toast.error(message);
+    },
   });
 
   if (!roles.includes("admin"))
@@ -133,19 +138,21 @@ function AdminPage() {
       </div>
     );
 
-  const personName = (id: string) => {
-    const person = people.data?.find((item) => item.id === id);
-    return person?.full_name || person?.email || id.slice(0, 8);
-  };
-
   return (
     <>
       <PageHeader
         title="Admin"
-        subtitle="Staff accounts, departments, capabilities, compensation and role audit."
+        subtitle="Staff accounts, departments, capabilities and compensation."
+        action={
+          hasCapability(myPermissions, "view_audit_log", roles) ? (
+            <Button variant="outline" asChild>
+              <Link to="/admin-audit">Open audit log</Link>
+            </Button>
+          ) : undefined
+        }
       />
       <div className="mb-6 flex gap-1 rounded-lg border border-border bg-secondary p-1 text-sm">
-        {(["people", "departments", "permissions", "audit"] as const).map((item) => (
+        {(["people", "departments", "permissions"] as const).map((item) => (
           <button
             key={item}
             onClick={() => setTab(item)}
@@ -235,10 +242,21 @@ function AdminPage() {
       {tab === "permissions" ? (
         <div className="space-y-4">
           <div className="rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
-            This matrix controls UI capability cues, but database policies enforce every protected
-            operation. Removing your own permission-management capability can lock this screen until
-            another authorized administrator restores it.
+            Every toggle is saved through Supabase row-level security and confirmed from the row the
+            database returns. Admin capabilities stay enabled as the recovery baseline.
           </div>
+          {matrixResult ? (
+            <div
+              aria-live="polite"
+              className={
+                matrixResult.status === "accepted"
+                  ? "rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300"
+                  : "rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              }
+            >
+              {matrixResult.message}
+            </div>
+          ) : null}
           <div className="logbook-card overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
               <thead>
@@ -266,24 +284,34 @@ function AdminPage() {
                         role,
                         permission.key as PermissionKey,
                       );
+                      const isSaving =
+                        setPermission.isPending &&
+                        setPermission.variables?.role === role &&
+                        setPermission.variables.permission_key === permission.key;
                       return (
                         <td key={role} className="px-4 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={enabled}
-                            disabled={role === "admin" || setPermission.isPending}
-                            onChange={() =>
-                              setPermission.mutate({
-                                role,
-                                permission_key: permission.key as PermissionKey,
-                                enabled: !enabled,
-                              })
-                            }
-                            aria-label={`${permission.label} for ${ROLE_LABEL[role]}`}
-                            title={
-                              role === "admin" ? "Admin capabilities are always enabled" : undefined
-                            }
-                          />
+                          <div className="flex flex-col items-center gap-1">
+                            <Switch
+                              checked={enabled}
+                              disabled={role === "admin" || setPermission.isPending}
+                              onCheckedChange={(checked) =>
+                                setPermission.mutate({
+                                  role,
+                                  permission_key: permission.key as PermissionKey,
+                                  enabled: checked,
+                                })
+                              }
+                              aria-label={`${permission.label} for ${ROLE_LABEL[role]}`}
+                              title={
+                                role === "admin"
+                                  ? "Admin capabilities are always enabled"
+                                  : undefined
+                              }
+                            />
+                            <span className="text-[10px] text-muted-foreground">
+                              {isSaving ? "Checking RLS…" : enabled ? "On" : "Off"}
+                            </span>
+                          </div>
                         </td>
                       );
                     })}
@@ -292,31 +320,6 @@ function AdminPage() {
               </tbody>
             </table>
           </div>
-        </div>
-      ) : null}
-
-      {tab === "audit" ? (
-        <div className="logbook-card divide-y divide-border">
-          {(audit.data ?? []).map((entry) => (
-            <div
-              key={entry.id}
-              className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm"
-            >
-              <span>
-                {ROLE_LABEL[entry.role as AppRole]} {entry.action} —{" "}
-                {personName(entry.target_user_id)}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {new Date(entry.created_at).toLocaleString()}
-                {entry.actor_id ? ` · by ${personName(entry.actor_id)}` : ""}
-              </span>
-            </div>
-          ))}
-          {!audit.isLoading && (audit.data ?? []).length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-              No role changes recorded yet.
-            </p>
-          ) : null}
         </div>
       ) : null}
     </>

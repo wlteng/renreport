@@ -11,6 +11,7 @@ export type ExpenseRow = Tables<"expenses">;
 export type CompensationRow = Tables<"staff_compensation">;
 export type PermissionRow = Tables<"permissions">;
 export type RolePermissionRow = Tables<"role_permissions">;
+export type AuditLogRow = Tables<"admin_audit_log">;
 
 export type PersonRow = Pick<
   Tables<"profiles">,
@@ -95,6 +96,26 @@ export function useRolePermissions() {
     queryKey: ["role-permissions"],
     queryFn: async () => {
       const { data, error } = await supabase.from("role_permissions").select("*");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export type AuditLogFilters = {
+  eventType?: string;
+  actorId?: string;
+};
+
+export function useAdminAuditLog(filters: AuditLogFilters, enabled: boolean) {
+  return useQuery({
+    queryKey: ["admin-audit", filters],
+    enabled,
+    queryFn: async () => {
+      let query = supabase.from("admin_audit_log").select("*");
+      if (filters.eventType) query = query.eq("event_type", filters.eventType);
+      if (filters.actorId) query = query.eq("actor_id", filters.actorId);
+      const { data, error } = await query.order("created_at", { ascending: false }).limit(250);
       if (error) throw error;
       return data ?? [];
     },
