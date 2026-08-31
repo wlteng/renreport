@@ -214,7 +214,6 @@ export type Database = {
           is_active: boolean
           job_title: string | null
           phone: string | null
-          resume: string | null
           updated_at: string
         }
         Insert: {
@@ -227,7 +226,6 @@ export type Database = {
           is_active?: boolean
           job_title?: string | null
           phone?: string | null
-          resume?: string | null
           updated_at?: string
         }
         Update: {
@@ -240,7 +238,6 @@ export type Database = {
           is_active?: boolean
           job_title?: string | null
           phone?: string | null
-          resume?: string | null
           updated_at?: string
         }
         Relationships: [
