@@ -5,12 +5,22 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveProjects, useExpenses, usePeople, useProjects } from "@/hooks/useData";
 import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
+import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { hasCapability } from "@/lib/roles";
 import { expenseSchema, firstValidationError } from "@/lib/validation";
 
@@ -175,122 +185,139 @@ function ExpensesPage() {
             ? "Project expense submissions across mining operations."
             : "Your mining project expense submissions."
         }
-        action={
-          canSubmit ? (
-            <Button onClick={() => setOpen((value) => !value)}>
-              {open ? "Close" : "New expense"}
-            </Button>
-          ) : undefined
-        }
+        action={canSubmit ? <Button onClick={() => setOpen(true)}>New expense</Button> : undefined}
       />
-      {open && canSubmit ? (
-        <form
-          className="logbook-card mb-6 space-y-4 p-6"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit.mutate();
-          }}
-        >
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="Mine project" id="eproject">
-              <select
-                id="eproject"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={projectId}
-                onChange={(event) => setProjectId(event.target.value)}
-              >
-                <option value="">Choose a project</option>
-                {(activeProjects.data ?? []).map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Expense date" id="edate">
-              <Input
-                id="edate"
-                type="date"
-                value={expenseDate}
-                onChange={(event) => setExpenseDate(event.target.value)}
+      <Dialog open={open && canSubmit} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>New expense</DialogTitle>
+            <DialogDescription>
+              Record a project cost and submit it for review, or save it as a draft.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit.mutate();
+            }}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Mine project" id="eproject">
+                <select
+                  id="eproject"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={projectId}
+                  onChange={(event) => setProjectId(event.target.value)}
+                >
+                  <option value="">Choose a project</option>
+                  {(activeProjects.data ?? []).map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Expense date" id="edate">
+                <Input
+                  id="edate"
+                  type="date"
+                  value={expenseDate}
+                  onChange={(event) => setExpenseDate(event.target.value)}
+                />
+              </Field>
+              <Field label="Category" id="ecategory">
+                <select
+                  id="ecategory"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm capitalize"
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value)}
+                >
+                  {categories.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Save as" id="estatus">
+                <select
+                  id="estatus"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                >
+                  <option value="submitted">Submitted</option>
+                  <option value="draft">Draft</option>
+                </select>
+              </Field>
+            </div>
+            <Field label="Description" id="edescription">
+              <Textarea
+                id="edescription"
+                rows={3}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
               />
             </Field>
-            <Field label="Category" id="ecategory">
-              <select
-                id="ecategory"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm capitalize"
-                value={category}
-                onChange={(event) => setCategory(event.target.value)}
-              >
-                {categories.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Save as" id="estatus">
-              <select
-                id="estatus"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-              >
-                <option value="submitted">Submitted</option>
-                <option value="draft">Draft</option>
-              </select>
-            </Field>
-          </div>
-          <Field label="Description" id="edescription">
-            <Textarea
-              id="edescription"
-              rows={3}
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="Vendor" id="evendor">
-              <Input
-                id="evendor"
-                value={vendor}
-                onChange={(event) => setVendor(event.target.value)}
-              />
-            </Field>
-            <Field label="Amount" id="eamount">
-              <Input
-                id="eamount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-              />
-            </Field>
-            <Field label="Currency" id="ecurrency">
-              <Input
-                id="ecurrency"
-                maxLength={3}
-                value={currency}
-                onChange={(event) => setCurrency(event.target.value.toUpperCase())}
-              />
-            </Field>
-            <Field label="Receipt URL" id="ereceipt">
-              <Input
-                id="ereceipt"
-                type="url"
-                value={receiptUrl}
-                onChange={(event) => setReceiptUrl(event.target.value)}
-              />
-            </Field>
-          </div>
-          <div className="flex justify-end">
-            <Button type="submit" disabled={submit.isPending}>
-              {submit.isPending ? "Saving…" : status === "draft" ? "Save draft" : "Submit expense"}
-            </Button>
-          </div>
-        </form>
-      ) : null}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Vendor" id="evendor">
+                <Input
+                  id="evendor"
+                  value={vendor}
+                  onChange={(event) => setVendor(event.target.value)}
+                />
+              </Field>
+              <Field label="Amount" id="eamount">
+                <Input
+                  id="eamount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                />
+              </Field>
+              <Field label="Currency" id="ecurrency">
+                <select
+                  id="ecurrency"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value)}
+                >
+                  {CURRENCY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Receipt URL" id="ereceipt">
+                <Input
+                  id="ereceipt"
+                  type="url"
+                  value={receiptUrl}
+                  onChange={(event) => setReceiptUrl(event.target.value)}
+                />
+              </Field>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button type="submit" disabled={submit.isPending}>
+                {submit.isPending
+                  ? "Saving…"
+                  : status === "draft"
+                    ? "Save draft"
+                    : "Submit expense"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <div className="logbook-card mb-6 grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="From" id="efrom">

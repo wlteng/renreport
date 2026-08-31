@@ -1,10 +1,21 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
+import { AdminWorkspace, type AdminSection } from "@/components/AdminWorkspace";
 import { PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -23,6 +34,7 @@ import {
 } from "@/hooks/useData";
 import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
+import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import {
   hasCapability,
   ROLE_DESCRIPTION,
@@ -43,6 +55,12 @@ import {
 } from "@/lib/validation";
 
 export const Route = createFileRoute("/_authenticated/admin")({
+  validateSearch: (search: Record<string, unknown>): { section: AdminSection } => ({
+    section:
+      search["section"] === "departments" || search["section"] === "permissions"
+        ? search["section"]
+        : "people",
+  }),
   head: () => ({
     meta: [
       { title: "Admin — Ren Report" },
@@ -67,10 +85,11 @@ function AdminPage() {
   const canCompensate = hasCapability(myPermissions, "manage_compensation", roles);
   const compensation = useCompensation(canCompensate);
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"people" | "departments" | "permissions">("people");
+  const { section: tab } = Route.useSearch();
   const [matrixResult, setMatrixResult] = useState<
     { status: "accepted" | "rejected"; message: string } | undefined
   >();
+  const [departmentOpen, setDepartmentOpen] = useState(false);
   const [deptName, setDeptName] = useState("");
   const [deptDescription, setDeptDescription] = useState("");
 
@@ -85,6 +104,7 @@ function AdminPage() {
     },
     onSuccess: () => {
       toast.success("Department created");
+      setDepartmentOpen(false);
       setDeptName("");
       setDeptDescription("");
       queryClient.invalidateQueries({ queryKey: ["departments"] });
@@ -139,33 +159,14 @@ function AdminPage() {
     );
 
   return (
-    <>
+    <AdminWorkspace
+      activeSection={tab}
+      canViewAudit={hasCapability(myPermissions, "view_audit_log", roles)}
+    >
       <PageHeader
-        title="Admin"
+        title="Admin workspace"
         subtitle="Staff accounts, departments, capabilities and compensation."
-        action={
-          hasCapability(myPermissions, "view_audit_log", roles) ? (
-            <Button variant="outline" asChild>
-              <Link to="/admin-audit">Open audit log</Link>
-            </Button>
-          ) : undefined
-        }
       />
-      <div className="mb-6 flex gap-1 rounded-lg border border-border bg-secondary p-1 text-sm">
-        {(["people", "departments", "permissions"] as const).map((item) => (
-          <button
-            key={item}
-            onClick={() => setTab(item)}
-            className={
-              tab === item
-                ? "flex-1 rounded-md bg-card px-3 py-1.5 font-medium capitalize shadow-xs"
-                : "flex-1 rounded-md px-3 py-1.5 capitalize text-muted-foreground"
-            }
-          >
-            {item}
-          </button>
-        ))}
-      </div>
 
       {tab === "people" ? (
         <div className="space-y-6">
@@ -188,37 +189,53 @@ function AdminPage() {
 
       {tab === "departments" ? (
         <div className="space-y-6">
-          <form
-            className="logbook-card space-y-4 p-5"
-            onSubmit={(event) => {
-              event.preventDefault();
-              createDepartment.mutate();
-            }}
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Department name" id="dname">
-                <Input
-                  id="dname"
-                  value={deptName}
-                  onChange={(event) => setDeptName(event.target.value)}
-                  placeholder="e.g. Mine operations"
-                />
-              </Field>
-              <Field label="Description" id="ddesc">
-                <Textarea
-                  id="ddesc"
-                  rows={2}
-                  value={deptDescription}
-                  onChange={(event) => setDeptDescription(event.target.value)}
-                />
-              </Field>
-            </div>
-            <div className="flex justify-end">
-              <Button type="submit" disabled={createDepartment.isPending}>
-                Add department
-              </Button>
-            </div>
-          </form>
+          <div className="flex justify-end">
+            <Button onClick={() => setDepartmentOpen(true)}>Add department</Button>
+          </div>
+          <Dialog open={departmentOpen} onOpenChange={setDepartmentOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add department</DialogTitle>
+                <DialogDescription>
+                  Create a department for organizing staff and mine operations.
+                </DialogDescription>
+              </DialogHeader>
+              <form
+                className="space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  createDepartment.mutate();
+                }}
+              >
+                <Field label="Department name" id="dname">
+                  <Input
+                    id="dname"
+                    value={deptName}
+                    onChange={(event) => setDeptName(event.target.value)}
+                    placeholder="e.g. Mine operations"
+                  />
+                </Field>
+                <Field label="Description" id="ddesc">
+                  <Textarea
+                    id="ddesc"
+                    rows={3}
+                    value={deptDescription}
+                    onChange={(event) => setDeptDescription(event.target.value)}
+                  />
+                </Field>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline">
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button type="submit" disabled={createDepartment.isPending}>
+                    {createDepartment.isPending ? "Adding…" : "Add department"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
           <div className="logbook-card divide-y divide-border">
             {(departments.data ?? []).map((department) => (
               <DepartmentCard
@@ -322,7 +339,7 @@ function AdminPage() {
           </div>
         </div>
       ) : null}
-    </>
+    </AdminWorkspace>
   );
 }
 
@@ -334,6 +351,7 @@ function CreateStaff({ departments }: { departments: Department[] }) {
     email: "",
     password: "",
     job_title: "",
+    resume: "",
     department_id: "",
     role: "staff",
     salary_amount: "0",
@@ -361,6 +379,7 @@ function CreateStaff({ departments }: { departments: Department[] }) {
         email: "",
         password: "",
         job_title: "",
+        resume: "",
         department_id: "",
         role: "staff",
         salary_amount: "0",
@@ -375,27 +394,35 @@ function CreateStaff({ departments }: { departments: Department[] }) {
     onError: showError,
   });
   return (
-    <section className="logbook-card p-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold">Staff accounts</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Create a confirmed account with its role and protected compensation record.
-          </p>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <section className="logbook-card p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold">Staff accounts</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Create a confirmed account with its role and protected compensation record.
+            </p>
+          </div>
+          <DialogTrigger asChild>
+            <Button variant="outline">Add staff account</Button>
+          </DialogTrigger>
         </div>
-        <Button variant="outline" onClick={() => setOpen((value) => !value)}>
-          {open ? "Close" : "Add staff account"}
-        </Button>
-      </div>
-      {open ? (
+      </section>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Add staff account</DialogTitle>
+          <DialogDescription>
+            Create a confirmed login with role, department, résumé, and compensation details.
+          </DialogDescription>
+        </DialogHeader>
         <form
-          className="mt-5 space-y-4 border-t border-border pt-5"
+          className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
             create.mutate();
           }}
         >
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Full name" id="sname">
               <Input
                 id="sname"
@@ -478,12 +505,18 @@ function CreateStaff({ departments }: { departments: Department[] }) {
               </select>
             </Field>
             <Field label="Currency" id="scurrency">
-              <Input
+              <select
                 id="scurrency"
-                maxLength={3}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
                 value={form.currency}
-                onChange={(event) => update("currency", event.target.value.toUpperCase())}
-              />
+                onChange={(event) => update("currency", event.target.value)}
+              >
+                {CURRENCY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </Field>
             <Field label="Standard hours" id="shours">
               <Input
@@ -497,14 +530,29 @@ function CreateStaff({ departments }: { departments: Department[] }) {
               />
             </Field>
           </div>
-          <div className="flex justify-end">
+          <Field label="Résumé / mining experience" id="sresume">
+            <Textarea
+              id="sresume"
+              rows={5}
+              maxLength={5000}
+              placeholder="Employment history, mine types, technical experience, and qualifications"
+              value={form.resume}
+              onChange={(event) => update("resume", event.target.value)}
+            />
+          </Field>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </DialogClose>
             <Button type="submit" disabled={create.isPending}>
               {create.isPending ? "Creating…" : "Create staff account"}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
-      ) : null}
-    </section>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -526,6 +574,7 @@ function PersonCard({
   const queryClient = useQueryClient();
   const [fullName, setFullName] = useState(person.full_name ?? "");
   const [jobTitle, setJobTitle] = useState(person.job_title ?? "");
+  const [resume, setResume] = useState(person.resume ?? "");
   const [salary, setSalary] = useState(String(compensation?.salary_amount ?? 0));
   const [salaryType, setSalaryType] = useState(compensation?.salary_type ?? "monthly");
   const [currency, setCurrency] = useState(compensation?.currency ?? "USD");
@@ -561,6 +610,7 @@ function PersonCard({
         user_id: person.id,
         full_name: fullName,
         job_title: jobTitle,
+        resume,
       });
       if (!parsed.success) throw new Error(firstValidationError(parsed.error));
       const { error } = await supabase
@@ -568,6 +618,7 @@ function PersonCard({
         .update({
           full_name: parsed.data.full_name,
           job_title: parsed.data.job_title ?? null,
+          resume: parsed.data.resume ?? null,
         })
         .eq("id", parsed.data.user_id);
       if (error) throw error;
@@ -651,6 +702,17 @@ function PersonCard({
               id={`job-${person.id}`}
               value={jobTitle}
               onChange={(event) => setJobTitle(event.target.value)}
+            />
+          </Field>
+        </div>
+        <div className="mt-3">
+          <Field label="Résumé / mining experience" id={`resume-${person.id}`}>
+            <Textarea
+              id={`resume-${person.id}`}
+              rows={5}
+              maxLength={5000}
+              value={resume}
+              onChange={(event) => setResume(event.target.value)}
             />
           </Field>
         </div>
@@ -741,12 +803,18 @@ function PersonCard({
               </select>
             </Field>
             <Field label="Currency" id={`currency-${person.id}`}>
-              <Input
+              <select
                 id={`currency-${person.id}`}
-                maxLength={3}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
                 value={currency}
-                onChange={(event) => setCurrency(event.target.value.toUpperCase())}
-              />
+                onChange={(event) => setCurrency(event.target.value)}
+              >
+                {CURRENCY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </Field>
             <Field label="Standard hours" id={`hours-${person.id}`}>
               <Input

@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   BarChart3,
+  ChevronDown,
   FileText,
   Home,
   LogOut,
@@ -14,6 +15,15 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -26,6 +36,18 @@ import {
 import { cn } from "@/lib/utils";
 
 type NavItem = { to: string; label: string; icon: LucideIcon };
+
+function profileInitials(name: string | null | undefined, email: string | undefined): string {
+  const words = name?.trim().split(/\s+/).filter(Boolean) ?? [];
+  if (words.length > 0) {
+    return words
+      .slice(0, 2)
+      .map((word) => Array.from(word)[0])
+      .join("")
+      .toUpperCase();
+  }
+  return email?.slice(0, 1).toUpperCase() || "U";
+}
 
 function navItemsFor(roles: AppRole[], permissions?: PermissionKey[]): NavItem[] {
   const items: NavItem[] = [{ to: "/dashboard", label: "Home", icon: Home }];
@@ -113,28 +135,61 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="truncate px-3 pb-2 text-xs text-muted-foreground">
             {profile?.full_name || profile?.email}
           </div>
-          <button
-            onClick={signOut}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground"
-          >
-            <LogOut className="size-4" />
-            Sign out
-          </button>
         </div>
       </aside>
 
-      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-card/90 px-4 py-3 backdrop-blur lg:hidden">
-        <div className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+      <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border bg-card/90 px-4 backdrop-blur lg:ml-60 lg:px-10">
+        <div className="flex items-center gap-2 text-sm font-semibold tracking-tight lg:hidden">
           <img src="/icons/icon-192.png" alt="" className="size-7 rounded-md" />
           Ren Report
         </div>
-        <button
-          onClick={signOut}
-          className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Sign out
-        </button>
-      </div>
+        <div className="hidden text-sm text-muted-foreground lg:block">
+          Mining operations logbook
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Open profile menu"
+              className="flex items-center gap-2 rounded-full outline-none ring-offset-background transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <Avatar className="size-9 border border-border">
+                <AvatarImage src={profile?.avatar_url ?? undefined} alt="" />
+                <AvatarFallback className="text-xs font-semibold">
+                  {profileInitials(profile?.full_name, profile?.email)}
+                </AvatarFallback>
+              </Avatar>
+              <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel className="font-normal">
+              <p className="truncate text-sm font-medium text-foreground">
+                {profile?.full_name || "Your account"}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">{profile?.email}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {roles.length ? ROLE_LABEL[highestRole(roles)] : "No role assigned"}
+              </p>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/profile">
+                <Settings />
+                Profile
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+              onSelect={() => void signOut()}
+            >
+              <LogOut />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </header>
 
       <main className="px-4 pb-28 pt-6 lg:ml-60 lg:px-10 lg:pb-12">
         <div className="mx-auto w-full max-w-5xl">{children}</div>

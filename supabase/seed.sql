@@ -92,7 +92,7 @@ VALUES
     '',
     '',
     '{"provider":"email","providers":["email"]}'::jsonb,
-    '{"full_name":"Saraa Staff"}'::jsonb,
+    '{"full_name":"王祥"}'::jsonb,
     now(),
     now()
   )
@@ -143,6 +143,7 @@ INSERT INTO public.profiles (
   email,
   full_name,
   job_title,
+  resume,
   department_id,
   is_active
 )
@@ -152,6 +153,7 @@ VALUES
     'admin@renreport.test',
     'Ariun Admin',
     'System Administrator',
+    NULL,
     '20000000-0000-4000-8000-000000000001',
     true
   ),
@@ -160,6 +162,7 @@ VALUES
     'boss@renreport.test',
     'Bat Boss',
     'Mine Director',
+    NULL,
     '20000000-0000-4000-8000-000000000001',
     true
   ),
@@ -168,14 +171,16 @@ VALUES
     'manager@renreport.test',
     'Munkh Manager',
     'Operations Manager',
+    NULL,
     '20000000-0000-4000-8000-000000000002',
     true
   ),
   (
     '10000000-0000-4000-8000-000000000004',
     'staff@renreport.test',
-    'Saraa Staff',
-    'Field Technician',
+    '王祥',
+    'Technical Specialist',
+    E'技术人员王祥：就职于华兴集团负责菲律宾的矿。\n做地质勘探做了五年，矿山做了 16 年，干过矿山种类有金，铜，铁，煤，硫。',
     '20000000-0000-4000-8000-000000000003',
     true
   )
@@ -183,6 +188,7 @@ ON CONFLICT (id) DO UPDATE
 SET email = EXCLUDED.email,
     full_name = EXCLUDED.full_name,
     job_title = EXCLUDED.job_title,
+    resume = EXCLUDED.resume,
     department_id = EXCLUDED.department_id,
     is_active = EXCLUDED.is_active;
 

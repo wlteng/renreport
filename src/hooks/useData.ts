@@ -15,7 +15,7 @@ export type AuditLogRow = Tables<"admin_audit_log">;
 
 export type PersonRow = Pick<
   Tables<"profiles">,
-  "id" | "email" | "full_name" | "job_title" | "department_id" | "is_active"
+  "id" | "email" | "full_name" | "job_title" | "resume" | "department_id" | "is_active"
 >;
 
 export function useDepartments() {
@@ -61,7 +61,7 @@ export function usePeople() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, email, full_name, job_title, department_id, is_active")
+        .select("id, email, full_name, job_title, resume, department_id, is_active")
         .order("full_name", { nullsFirst: false });
       if (error) throw error;
       return data ?? [];

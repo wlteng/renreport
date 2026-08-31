@@ -35,6 +35,7 @@ export type Profile = {
   full_name: string | null;
   avatar_url: string | null;
   job_title: string | null;
+  resume: string | null;
   phone: string | null;
   department_id: string | null;
   is_active: boolean;

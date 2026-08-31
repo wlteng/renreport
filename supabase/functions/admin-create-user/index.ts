@@ -12,15 +12,12 @@ const requestSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   password: z.string().min(8).max(128),
   job_title: z.string().trim().max(120).optional().nullable(),
+  resume: z.string().trim().max(5000).optional().nullable(),
   department_id: z.string().uuid().optional().nullable(),
   role: z.enum(["admin", "boss", "manager", "staff"]),
   salary_amount: z.number().min(0).max(999999999999.99),
   salary_type: z.enum(["monthly", "hourly", "daily"]),
-  currency: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z]{3}$/),
+  currency: z.enum(["CNY", "RUB", "USD", "MYR"]),
   standard_hours: z.number().positive().max(744),
 });
 
@@ -115,6 +112,7 @@ Deno.serve(async (request) => {
       .update({
         full_name: input.full_name,
         job_title: input.job_title || null,
+        resume: input.resume || null,
         department_id: input.department_id || null,
         is_active: true,
       })

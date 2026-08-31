@@ -15,11 +15,7 @@ const optionalNumber = (max: number) =>
     z.coerce.number().min(0).max(max).optional(),
   );
 
-const currency = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .regex(/^[A-Z]{3}$/, "Use a 3-letter currency");
+export const currencySchema = z.enum(["CNY", "RUB", "USD", "MYR"]);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a valid date");
 const optionalUuid = z.preprocess(
   (value) => (value === "" ? undefined : value),
@@ -102,7 +98,7 @@ export const expenseSchema = z.object({
   description: trimmed(1, 2000, "Description"),
   vendor: optionalTrimmed(160),
   amount: z.coerce.number().positive("Amount must be greater than zero").max(999999999999.99),
-  currency,
+  currency: currencySchema,
   receipt_url: z.preprocess(
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     z.string().trim().url("Enter a valid receipt URL").max(2000).optional(),
@@ -125,6 +121,7 @@ export const personDetailsSchema = z.object({
   user_id: z.string().uuid(),
   full_name: trimmed(1, 120, "Full name"),
   job_title: optionalTrimmed(120),
+  resume: optionalTrimmed(5000),
 });
 
 export const roleMutationSchema = z.object({
@@ -142,7 +139,7 @@ export const compensationSchema = z.object({
   user_id: z.string().uuid(),
   salary_amount: z.coerce.number().min(0).max(999999999999.99),
   salary_type: salaryTypeSchema,
-  currency,
+  currency: currencySchema,
   standard_hours: z.coerce.number().positive().max(744),
 });
 
@@ -151,6 +148,7 @@ export const createStaffSchema = compensationSchema.omit({ user_id: true }).exte
   email: z.string().trim().toLowerCase().email().max(254),
   password: z.string().min(8, "Password must be at least 8 characters").max(128),
   job_title: optionalTrimmed(120),
+  resume: optionalTrimmed(5000),
   department_id: optionalUuid,
   role: appRoleSchema,
 });

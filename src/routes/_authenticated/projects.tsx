@@ -5,6 +5,15 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -128,127 +137,136 @@ function ProjectsPage() {
         title="Mine projects"
         subtitle="Mining operations, licensing, reserves and reported site activity."
         action={
-          editable ? (
-            <Button onClick={() => setOpen((value) => !value)}>
-              {open ? "Close" : "New mine operation"}
-            </Button>
-          ) : undefined
+          editable ? <Button onClick={() => setOpen(true)}>New mine operation</Button> : undefined
         }
       />
 
-      {open && editable ? (
-        <form
-          className="logbook-card mb-6 space-y-4 p-6"
-          onSubmit={(event) => {
-            event.preventDefault();
-            create.mutate();
-          }}
-        >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Operation name" id="pname">
-              <Input id="pname" value={name} onChange={(event) => setName(event.target.value)} />
-            </Field>
-            <Field label="Project code" id="pcode">
-              <Input
-                id="pcode"
-                value={projectCode}
-                onChange={(event) => setProjectCode(event.target.value)}
-                placeholder="Optional unique code"
+      <Dialog open={open && editable} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>New mine operation</DialogTitle>
+            <DialogDescription>
+              Add the operating, licensing, reserve, and ownership details for a mine.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              create.mutate();
+            }}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Operation name" id="pname">
+                <Input id="pname" value={name} onChange={(event) => setName(event.target.value)} />
+              </Field>
+              <Field label="Project code" id="pcode">
+                <Input
+                  id="pcode"
+                  value={projectCode}
+                  onChange={(event) => setProjectCode(event.target.value)}
+                  placeholder="Optional unique code"
+                />
+              </Field>
+              <Field label="Legal name" id="plegal">
+                <Input
+                  id="plegal"
+                  value={legalName}
+                  onChange={(event) => setLegalName(event.target.value)}
+                />
+              </Field>
+              <Field label="Location" id="plocation">
+                <Input
+                  id="plocation"
+                  value={location}
+                  onChange={(event) => setLocation(event.target.value)}
+                />
+              </Field>
+              <Field label="Mining method" id="pmethod">
+                <select
+                  id="pmethod"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={miningMethod}
+                  onChange={(event) => setMiningMethod(event.target.value)}
+                >
+                  {Object.entries(methodLabel).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="License status" id="plicense">
+                <select
+                  id="plicense"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={licenseStatus}
+                  onChange={(event) => setLicenseStatus(event.target.value)}
+                >
+                  {Object.entries(licenseLabel).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Estimated reserve (kg)" id="preserve">
+                <Input
+                  id="preserve"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={reserveKg}
+                  onChange={(event) => setReserveKg(event.target.value)}
+                />
+              </Field>
+              <Field label="Area (km²)" id="parea">
+                <Input
+                  id="parea"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={areaKm2}
+                  onChange={(event) => setAreaKm2(event.target.value)}
+                />
+              </Field>
+              <Field label="Department" id="pdept">
+                <select
+                  id="pdept"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={departmentId}
+                  onChange={(event) => setDepartmentId(event.target.value)}
+                >
+                  <option value="">None</option>
+                  {(departments.data ?? []).map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Description" id="pdesc">
+              <Textarea
+                id="pdesc"
+                rows={3}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
               />
             </Field>
-            <Field label="Legal name" id="plegal">
-              <Input
-                id="plegal"
-                value={legalName}
-                onChange={(event) => setLegalName(event.target.value)}
-              />
-            </Field>
-            <Field label="Location" id="plocation">
-              <Input
-                id="plocation"
-                value={location}
-                onChange={(event) => setLocation(event.target.value)}
-              />
-            </Field>
-            <Field label="Mining method" id="pmethod">
-              <select
-                id="pmethod"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={miningMethod}
-                onChange={(event) => setMiningMethod(event.target.value)}
-              >
-                {Object.entries(methodLabel).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="License status" id="plicense">
-              <select
-                id="plicense"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={licenseStatus}
-                onChange={(event) => setLicenseStatus(event.target.value)}
-              >
-                {Object.entries(licenseLabel).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Estimated reserve (kg)" id="preserve">
-              <Input
-                id="preserve"
-                type="number"
-                min="0"
-                step="0.001"
-                value={reserveKg}
-                onChange={(event) => setReserveKg(event.target.value)}
-              />
-            </Field>
-            <Field label="Area (km²)" id="parea">
-              <Input
-                id="parea"
-                type="number"
-                min="0"
-                step="0.001"
-                value={areaKm2}
-                onChange={(event) => setAreaKm2(event.target.value)}
-              />
-            </Field>
-            <Field label="Department" id="pdept">
-              <select
-                id="pdept"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={departmentId}
-                onChange={(event) => setDepartmentId(event.target.value)}
-              >
-                <option value="">None</option>
-                {(departments.data ?? []).map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <Field label="Description" id="pdesc">
-            <Textarea
-              id="pdesc"
-              rows={3}
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-          </Field>
-          <div className="flex justify-end">
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Creating…" : "Create operation"}
-            </Button>
-          </div>
-        </form>
-      ) : null}
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button type="submit" disabled={create.isPending}>
+                {create.isPending ? "Creating…" : "Create operation"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {projects.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading mine projects…</p>

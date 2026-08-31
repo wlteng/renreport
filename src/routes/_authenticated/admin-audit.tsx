@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
+import { AdminWorkspace } from "@/components/AdminWorkspace";
 import { PageHeader } from "@/components/AppShell";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAdminAuditLog, usePeople, useProjects } from "@/hooks/useData";
@@ -98,15 +98,10 @@ function AdminAuditPage() {
   };
 
   return (
-    <>
+    <AdminWorkspace activeSection="audit" canViewAudit>
       <PageHeader
         title="Admin audit log"
         subtitle="An RLS-protected timeline of report, role and capability actions."
-        action={
-          <Button variant="outline" asChild>
-            <Link to="/admin">Back to admin</Link>
-          </Button>
-        }
       />
 
       <div className="logbook-card mb-6 grid gap-4 p-5 sm:grid-cols-3">
@@ -208,6 +203,6 @@ function AdminAuditPage() {
           </p>
         ) : null}
       </div>
-    </>
+    </AdminWorkspace>
   );
 }
