@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { loginIdentifierToEmail } from "@/lib/staffAuth";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -21,7 +22,7 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -35,7 +36,10 @@ function AuthPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({
+        email: loginIdentifierToEmail(identifier),
+        password,
+      });
       if (error) throw error;
       navigate({ to: "/dashboard", replace: true });
     } catch (err) {
@@ -63,13 +67,15 @@ function AuthPage() {
           </p>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="identifier">Username or email</Label>
               <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@company.com"
+                id="identifier"
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value)}
+                placeholder="username or you@company.com"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="username"
                 required
               />
             </div>
@@ -80,6 +86,7 @@ function AuthPage() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
                 required
               />
             </div>

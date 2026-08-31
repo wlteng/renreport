@@ -28,6 +28,7 @@ import {
   useVisibleReports,
 } from "@/hooks/useData";
 import { hasCapability } from "@/lib/roles";
+import { staffLoginLabel } from "@/lib/staffAuth";
 import { firstValidationError, miningProjectSchema, projectMemberSchema } from "@/lib/validation";
 
 export const Route = createFileRoute("/_authenticated/projects")({
@@ -379,10 +380,10 @@ function ProjectsPage() {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">
-                      {person.full_name || person.email}
+                      {person.full_name || staffLoginLabel(person.email)}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {person.email || "No login email"}
+                      {staffLoginLabel(person.email)}
                     </p>
                   </div>
                   <Button
@@ -428,10 +429,10 @@ function ProjectsPage() {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">
-                      {person.full_name || person.email}
+                      {person.full_name || staffLoginLabel(person.email)}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {person.email || "No login email"}
+                      {staffLoginLabel(person.email)}
                       {person.job_title ? ` · ${person.job_title}` : ""}
                     </p>
                   </div>

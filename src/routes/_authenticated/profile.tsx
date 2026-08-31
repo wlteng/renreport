@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/useSession";
 import { useDepartments } from "@/hooks/useData";
 import { ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/roles";
+import { isStaffLoginEmail, staffLoginLabel } from "@/lib/staffAuth";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({
@@ -84,8 +85,10 @@ function ProfilePage() {
             <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Email</Label>
-            <Input value={profile?.email ?? ""} readOnly disabled />
+            <Label>
+              {profile?.email && isStaffLoginEmail(profile.email) ? "Username" : "Email"}
+            </Label>
+            <Input value={profile?.email ? staffLoginLabel(profile.email) : ""} readOnly disabled />
           </div>
           <div className="flex justify-end">
             <Button type="submit" disabled={save.isPending}>

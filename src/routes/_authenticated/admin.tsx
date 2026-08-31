@@ -53,6 +53,7 @@ import {
   personMutationSchema,
   roleMutationSchema,
 } from "@/lib/validation";
+import { staffLoginLabel } from "@/lib/staffAuth";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   validateSearch: (search: Record<string, unknown>): { section: AdminSection } => ({
@@ -74,6 +75,12 @@ export const Route = createFileRoute("/_authenticated/admin")({
   }),
   component: AdminPage,
 });
+
+const ADMIN_PAGE_TITLE: Record<AdminSection, string> = {
+  people: "People & roles",
+  departments: "Departments",
+  permissions: "Capabilities",
+};
 
 function AdminPage() {
   const { user, roles, permissions: myPermissions } = useMe();
@@ -164,34 +171,34 @@ function AdminPage() {
       canViewAudit={hasCapability(myPermissions, "view_audit_log", roles)}
     >
       <PageHeader
-        title="Admin workspace"
-        subtitle="Staff accounts, departments, capabilities and compensation."
+        title={ADMIN_PAGE_TITLE[tab]}
+        action={
+          tab === "people" ? (
+            <CreateStaff departments={departments.data ?? []} />
+          ) : tab === "departments" ? (
+            <Button onClick={() => setDepartmentOpen(true)}>Add department</Button>
+          ) : undefined
+        }
       />
 
       {tab === "people" ? (
-        <div className="space-y-6">
-          <CreateStaff departments={departments.data ?? []} />
-          <div className="space-y-4">
-            {(people.data ?? []).map((person) => (
-              <PersonCard
-                key={`${person.id}-${compensation.data?.find((row) => row.user_id === person.id)?.updated_at ?? "pending"}`}
-                person={person}
-                held={(allRoles.data ?? []).filter((role) => role.user_id === person.id)}
-                departments={departments.data ?? []}
-                compensation={compensation.data?.find((row) => row.user_id === person.id)}
-                canCompensate={canCompensate}
-                currentUserId={user?.id}
-              />
-            ))}
-          </div>
+        <div className="space-y-4">
+          {(people.data ?? []).map((person) => (
+            <PersonCard
+              key={`${person.id}-${compensation.data?.find((row) => row.user_id === person.id)?.updated_at ?? "pending"}`}
+              person={person}
+              held={(allRoles.data ?? []).filter((role) => role.user_id === person.id)}
+              departments={departments.data ?? []}
+              compensation={compensation.data?.find((row) => row.user_id === person.id)}
+              canCompensate={canCompensate}
+              currentUserId={user?.id}
+            />
+          ))}
         </div>
       ) : null}
 
       {tab === "departments" ? (
         <div className="space-y-6">
-          <div className="flex justify-end">
-            <Button onClick={() => setDepartmentOpen(true)}>Add department</Button>
-          </div>
           <Dialog open={departmentOpen} onOpenChange={setDepartmentOpen}>
             <DialogContent>
               <DialogHeader>
@@ -348,7 +355,7 @@ function CreateStaff({ departments }: { departments: Department[] }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     full_name: "",
-    email: "",
+    username: "",
     password: "",
     job_title: "",
     resume: "",
@@ -376,7 +383,7 @@ function CreateStaff({ departments }: { departments: Department[] }) {
       setOpen(false);
       setForm({
         full_name: "",
-        email: "",
+        username: "",
         password: "",
         job_title: "",
         resume: "",
@@ -395,25 +402,14 @@ function CreateStaff({ departments }: { departments: Department[] }) {
   });
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <section className="logbook-card p-5">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-sm font-semibold">Staff</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Add a staff member with just their name. Login and employment details are optional.
-            </p>
-          </div>
-          <DialogTrigger asChild>
-            <Button variant="outline">Add staff</Button>
-          </DialogTrigger>
-        </div>
-      </section>
+      <DialogTrigger asChild>
+        <Button>Add staff</Button>
+      </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add staff</DialogTitle>
           <DialogDescription>
-            Only the name is required. Expand the optional section to add login or employment
-            details now.
+            Create a staff login. Employment details are optional.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -423,39 +419,46 @@ function CreateStaff({ departments }: { departments: Department[] }) {
             create.mutate();
           }}
         >
-          <Field label="Full name" id="sname">
-            <Input
-              id="sname"
-              autoFocus
-              value={form.full_name}
-              onChange={(event) => update("full_name", event.target.value)}
-            />
-          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Display name" id="sname">
+              <Input
+                id="sname"
+                autoFocus
+                value={form.full_name}
+                onChange={(event) => update("full_name", event.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Username" id="susername">
+              <Input
+                id="susername"
+                value={form.username}
+                onChange={(event) => update("username", event.target.value.toLowerCase())}
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="off"
+                minLength={3}
+                required
+              />
+            </Field>
+            <Field label="Password" id="spass">
+              <Input
+                id="spass"
+                type="password"
+                value={form.password}
+                onChange={(event) => update("password", event.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </Field>
+          </div>
 
           <details className="rounded-md border border-border p-4">
             <summary className="cursor-pointer text-sm font-medium">
-              Optional login and staff details
+              Optional employment details
             </summary>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <Field label="Email" id="semail">
-                <Input
-                  id="semail"
-                  type="email"
-                  value={form.email}
-                  onChange={(event) => update("email", event.target.value)}
-                />
-              </Field>
-              <Field label="Temporary password" id="spass">
-                <Input
-                  id="spass"
-                  type="password"
-                  value={form.password}
-                  onChange={(event) => update("password", event.target.value)}
-                />
-              </Field>
-              <p className="text-xs text-muted-foreground sm:col-span-2">
-                Leave both blank for a directory-only staff member. Add both to give login access.
-              </p>
               <Field label="Job title" id="stitle">
                 <Input
                   id="stitle"
@@ -668,9 +671,11 @@ function PersonCard({
     <article className="logbook-card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold">{person.full_name || person.email}</p>
+          <p className="text-sm font-semibold">
+            {person.full_name || staffLoginLabel(person.email)}
+          </p>
           <p className="text-xs text-muted-foreground">
-            {[person.email, person.job_title].filter(Boolean).join(" · ") || "No login email"}
+            {[staffLoginLabel(person.email), person.job_title].filter(Boolean).join(" · ")}
           </p>
         </div>
         <button

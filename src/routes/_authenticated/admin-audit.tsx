@@ -99,10 +99,7 @@ function AdminAuditPage() {
 
   return (
     <AdminWorkspace activeSection="audit" canViewAudit>
-      <PageHeader
-        title="Admin audit log"
-        subtitle="An RLS-protected timeline of report, role and capability actions."
-      />
+      <PageHeader title="Audit log" />
 
       <div className="logbook-card mb-6 grid gap-4 p-5 sm:grid-cols-3">
         <div className="space-y-1.5">

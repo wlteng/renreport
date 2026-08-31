@@ -32,6 +32,7 @@ import {
   type AppRole,
   type PermissionKey,
 } from "@/lib/roles";
+import { staffLoginLabel } from "@/lib/staffAuth";
 import { cn } from "@/lib/utils";
 
 type NavItem = { to: string; label: string; icon: LucideIcon };
@@ -130,7 +131,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="border-t border-sidebar-border pt-3">
           <div className="truncate px-3 pb-2 text-xs text-muted-foreground">
-            {profile?.full_name || profile?.email}
+            {profile?.full_name || (profile?.email ? staffLoginLabel(profile.email) : null)}
           </div>
         </div>
       </aside>
@@ -163,7 +164,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <p className="truncate text-sm font-medium text-foreground">
                 {profile?.full_name || "Your account"}
               </p>
-              <p className="truncate text-xs text-muted-foreground">{profile?.email}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {profile?.email ? staffLoginLabel(profile.email) : null}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {roles.length ? ROLE_LABEL[highestRole(roles)] : "No role assigned"}
               </p>
