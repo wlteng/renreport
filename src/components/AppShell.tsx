@@ -2,7 +2,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   BarChart3,
-  ChevronDown,
   FileText,
   Home,
   LogOut,
@@ -60,8 +59,6 @@ function navItemsFor(roles: AppRole[], permissions?: PermissionKey[]): NavItem[]
   }
   items.push({ to: "/projects", label: "Mine projects", icon: Pickaxe });
   items.push({ to: "/expenses", label: "Expenses", icon: ReceiptText });
-  if (roles.includes("admin")) items.push({ to: "/admin", label: "Admin", icon: Users });
-  items.push({ to: "/profile", label: "Profile", icon: Settings });
   return items;
 }
 
@@ -159,7 +156,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                   {profileInitials(profile?.full_name, profile?.email)}
                 </AvatarFallback>
               </Avatar>
-              <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
@@ -173,6 +169,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               </p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {roles.includes("admin") ? (
+              <DropdownMenuItem asChild>
+                <Link to="/admin" search={{ section: "people" }}>
+                  <Users />
+                  Admin workspace
+                </Link>
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem asChild>
               <Link to="/profile">
                 <Settings />

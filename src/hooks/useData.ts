@@ -12,10 +12,15 @@ export type CompensationRow = Tables<"staff_compensation">;
 export type PermissionRow = Tables<"permissions">;
 export type RolePermissionRow = Tables<"role_permissions">;
 export type AuditLogRow = Tables<"admin_audit_log">;
+export type ProjectMemberRow = Tables<"project_members">;
 
 export type PersonRow = Pick<
   Tables<"profiles">,
   "id" | "email" | "full_name" | "job_title" | "resume" | "department_id" | "is_active"
+>;
+export type StaffDirectoryRow = Pick<
+  Tables<"profiles">,
+  "id" | "email" | "full_name" | "job_title" | "is_active"
 >;
 
 export function useDepartments() {
@@ -55,13 +60,45 @@ export function useActiveProjects() {
   });
 }
 
+export function useProjectMembers() {
+  return useQuery({
+    queryKey: ["project-members"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("project_members").select("*");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
 export function usePeople() {
   return useQuery({
     queryKey: ["people"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const withResume = await supabase
         .from("profiles")
         .select("id, email, full_name, job_title, resume, department_id, is_active")
+        .order("full_name", { nullsFirst: false });
+      if (!withResume.error) return withResume.data ?? [];
+      if (!withResume.error.message.includes("profiles.resume")) throw withResume.error;
+
+      const fallback = await supabase
+        .from("profiles")
+        .select("id, email, full_name, job_title, department_id, is_active")
+        .order("full_name", { nullsFirst: false });
+      if (fallback.error) throw fallback.error;
+      return (fallback.data ?? []).map((person) => ({ ...person, resume: null }));
+    },
+  });
+}
+
+export function useStaffDirectory() {
+  return useQuery({
+    queryKey: ["people", "directory"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, email, full_name, job_title, is_active")
         .order("full_name", { nullsFirst: false });
       if (error) throw error;
       return data ?? [];

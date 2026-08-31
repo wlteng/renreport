@@ -372,7 +372,7 @@ function CreateStaff({ departments }: { departments: Department[] }) {
       if (data?.error) throw new Error(data.error);
     },
     onSuccess: () => {
-      toast.success("Staff account created");
+      toast.success("Staff added");
       setOpen(false);
       setForm({
         full_name: "",
@@ -398,21 +398,22 @@ function CreateStaff({ departments }: { departments: Department[] }) {
       <section className="logbook-card p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-sm font-semibold">Staff accounts</h2>
+            <h2 className="text-sm font-semibold">Staff</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Create a confirmed account with its role and protected compensation record.
+              Add a staff member with just their name. Login and employment details are optional.
             </p>
           </div>
           <DialogTrigger asChild>
-            <Button variant="outline">Add staff account</Button>
+            <Button variant="outline">Add staff</Button>
           </DialogTrigger>
         </div>
       </section>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add staff account</DialogTitle>
+          <DialogTitle>Add staff</DialogTitle>
           <DialogDescription>
-            Create a confirmed login with role, department, résumé, and compensation details.
+            Only the name is required. Expand the optional section to add login or employment
+            details now.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -422,124 +423,122 @@ function CreateStaff({ departments }: { departments: Department[] }) {
             create.mutate();
           }}
         >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Full name" id="sname">
-              <Input
-                id="sname"
-                value={form.full_name}
-                onChange={(event) => update("full_name", event.target.value)}
-              />
-            </Field>
-            <Field label="Email" id="semail">
-              <Input
-                id="semail"
-                type="email"
-                value={form.email}
-                onChange={(event) => update("email", event.target.value)}
-              />
-            </Field>
-            <Field label="Temporary password" id="spass">
-              <Input
-                id="spass"
-                type="password"
-                value={form.password}
-                onChange={(event) => update("password", event.target.value)}
-              />
-            </Field>
-            <Field label="Job title" id="stitle">
-              <Input
-                id="stitle"
-                value={form.job_title}
-                onChange={(event) => update("job_title", event.target.value)}
-              />
-            </Field>
-            <Field label="Department" id="sdept">
-              <select
-                id="sdept"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={form.department_id}
-                onChange={(event) => update("department_id", event.target.value)}
-              >
-                <option value="">Unassigned</option>
-                {departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Role" id="srole">
-              <select
-                id="srole"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={form.role}
-                onChange={(event) => update("role", event.target.value)}
-              >
-                {ROLE_ORDER.map((role) => (
-                  <option key={role} value={role}>
-                    {ROLE_LABEL[role]}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Salary" id="ssalary">
-              <Input
-                id="ssalary"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.salary_amount}
-                onChange={(event) => update("salary_amount", event.target.value)}
-              />
-            </Field>
-            <Field label="Salary type" id="stype">
-              <select
-                id="stype"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={form.salary_type}
-                onChange={(event) => update("salary_type", event.target.value)}
-              >
-                <option value="monthly">Monthly</option>
-                <option value="hourly">Hourly</option>
-                <option value="daily">Daily</option>
-              </select>
-            </Field>
-            <Field label="Currency" id="scurrency">
-              <select
-                id="scurrency"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={form.currency}
-                onChange={(event) => update("currency", event.target.value)}
-              >
-                {CURRENCY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Standard hours" id="shours">
-              <Input
-                id="shours"
-                type="number"
-                min="0.01"
-                max="744"
-                step="0.25"
-                value={form.standard_hours}
-                onChange={(event) => update("standard_hours", event.target.value)}
-              />
-            </Field>
-          </div>
-          <Field label="Résumé / mining experience" id="sresume">
-            <Textarea
-              id="sresume"
-              rows={5}
-              maxLength={5000}
-              placeholder="Employment history, mine types, technical experience, and qualifications"
-              value={form.resume}
-              onChange={(event) => update("resume", event.target.value)}
+          <Field label="Full name" id="sname">
+            <Input
+              id="sname"
+              autoFocus
+              value={form.full_name}
+              onChange={(event) => update("full_name", event.target.value)}
             />
           </Field>
+
+          <details className="rounded-md border border-border p-4">
+            <summary className="cursor-pointer text-sm font-medium">
+              Optional login and staff details
+            </summary>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Field label="Email" id="semail">
+                <Input
+                  id="semail"
+                  type="email"
+                  value={form.email}
+                  onChange={(event) => update("email", event.target.value)}
+                />
+              </Field>
+              <Field label="Temporary password" id="spass">
+                <Input
+                  id="spass"
+                  type="password"
+                  value={form.password}
+                  onChange={(event) => update("password", event.target.value)}
+                />
+              </Field>
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Leave both blank for a directory-only staff member. Add both to give login access.
+              </p>
+              <Field label="Job title" id="stitle">
+                <Input
+                  id="stitle"
+                  value={form.job_title}
+                  onChange={(event) => update("job_title", event.target.value)}
+                />
+              </Field>
+              <Field label="Department" id="sdept">
+                <select
+                  id="sdept"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={form.department_id}
+                  onChange={(event) => update("department_id", event.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Salary" id="ssalary">
+                <Input
+                  id="ssalary"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.salary_amount}
+                  onChange={(event) => update("salary_amount", event.target.value)}
+                />
+              </Field>
+              <Field label="Salary type" id="stype">
+                <select
+                  id="stype"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={form.salary_type}
+                  onChange={(event) => update("salary_type", event.target.value)}
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="daily">Daily</option>
+                </select>
+              </Field>
+              <Field label="Currency" id="scurrency">
+                <select
+                  id="scurrency"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={form.currency}
+                  onChange={(event) => update("currency", event.target.value)}
+                >
+                  {CURRENCY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Standard monthly hours" id="shours">
+                <Input
+                  id="shours"
+                  type="number"
+                  min="0.25"
+                  max="744"
+                  step="0.25"
+                  value={form.standard_hours}
+                  onChange={(event) => update("standard_hours", event.target.value)}
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="Résumé / mining experience" id="sresume">
+                  <Textarea
+                    id="sresume"
+                    rows={4}
+                    maxLength={5000}
+                    placeholder="Employment history, mine types, technical experience, and qualifications"
+                    value={form.resume}
+                    onChange={(event) => update("resume", event.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+          </details>
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
@@ -547,7 +546,7 @@ function CreateStaff({ departments }: { departments: Department[] }) {
               </Button>
             </DialogClose>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Creating…" : "Create staff account"}
+              {create.isPending ? "Adding…" : "Add staff"}
             </Button>
           </DialogFooter>
         </form>
@@ -671,8 +670,7 @@ function PersonCard({
         <div>
           <p className="text-sm font-semibold">{person.full_name || person.email}</p>
           <p className="text-xs text-muted-foreground">
-            {person.email}
-            {person.job_title ? ` · ${person.job_title}` : ""}
+            {[person.email, person.job_title].filter(Boolean).join(" · ") || "No login email"}
           </p>
         </div>
         <button
@@ -816,16 +814,20 @@ function PersonCard({
                 ))}
               </select>
             </Field>
-            <Field label="Standard hours" id={`hours-${person.id}`}>
+            <Field label="Standard monthly hours" id={`hours-${person.id}`}>
               <Input
                 id={`hours-${person.id}`}
                 type="number"
-                min="0.01"
+                min="0.25"
                 max="744"
                 step="0.25"
                 value={hours}
                 onChange={(event) => setHours(event.target.value)}
+                aria-describedby={`hours-help-${person.id}`}
               />
+              <p id={`hours-help-${person.id}`} className="text-xs text-muted-foreground">
+                Expected paid hours in a normal month; informational for now.
+              </p>
             </Field>
           </div>
           <div className="mt-3 flex justify-end">

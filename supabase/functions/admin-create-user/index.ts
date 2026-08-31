@@ -7,19 +7,34 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const requestSchema = z.object({
-  full_name: z.string().trim().min(1).max(120),
-  email: z.string().trim().toLowerCase().email().max(254),
-  password: z.string().min(8).max(128),
-  job_title: z.string().trim().max(120).optional().nullable(),
-  resume: z.string().trim().max(5000).optional().nullable(),
-  department_id: z.string().uuid().optional().nullable(),
-  role: z.enum(["admin", "boss", "manager", "staff"]),
-  salary_amount: z.number().min(0).max(999999999999.99),
-  salary_type: z.enum(["monthly", "hourly", "daily"]),
-  currency: z.enum(["CNY", "RUB", "USD", "MYR"]),
-  standard_hours: z.number().positive().max(744),
-});
+const emptyToUndefined = (value: unknown) =>
+  typeof value === "string" && value.trim() === "" ? undefined : value;
+
+const requestSchema = z
+  .object({
+    full_name: z.string().trim().min(1).max(120),
+    email: z.preprocess(
+      emptyToUndefined,
+      z.string().trim().toLowerCase().email().max(254).optional(),
+    ),
+    password: z.preprocess(emptyToUndefined, z.string().min(8).max(128).optional()),
+    job_title: z.preprocess(emptyToUndefined, z.string().trim().max(120).optional().nullable()),
+    resume: z.preprocess(emptyToUndefined, z.string().trim().max(5000).optional().nullable()),
+    department_id: z.preprocess(emptyToUndefined, z.string().uuid().optional().nullable()),
+    role: z.literal("staff").default("staff"),
+    salary_amount: z.number().min(0).max(999999999999.99).default(0),
+    salary_type: z.enum(["monthly", "hourly", "daily"]).default("monthly"),
+    currency: z.enum(["CNY", "RUB", "USD", "MYR"]).default("USD"),
+    standard_hours: z.number().positive().max(744).default(160),
+  })
+  .superRefine((value, context) => {
+    if (!!value.email === !!value.password) return;
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [value.email ? "password" : "email"],
+      message: "Email and password must be added together",
+    });
+  });
 
 const env = (name: string) => {
   const deno = globalThis as typeof globalThis & {
@@ -95,11 +110,15 @@ Deno.serve(async (request) => {
   }
 
   const input = parsed.data;
+  const directoryOnly = !input.email;
+  const authEmail = input.email ?? `staff-${crypto.randomUUID()}@internal.invalid`;
+  const authPassword = input.password ?? `${crypto.randomUUID()}-${crypto.randomUUID()}`;
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
-    email: input.email,
-    password: input.password,
+    email: authEmail,
+    password: authPassword,
     email_confirm: true,
-    user_metadata: { full_name: input.full_name },
+    user_metadata: { full_name: input.full_name, directory_only: directoryOnly },
+    app_metadata: { directory_only: directoryOnly },
   });
   if (createError || !created.user) {
     return json({ error: createError?.message ?? "Could not create staff account" }, 400);
@@ -107,15 +126,18 @@ Deno.serve(async (request) => {
 
   const userId = created.user.id;
   try {
+    const profileUpdate: Record<string, string | boolean | null> = {
+      email: input.email ?? "",
+      full_name: input.full_name,
+      job_title: input.job_title || null,
+      department_id: input.department_id || null,
+      is_active: true,
+    };
+    if (input.resume) profileUpdate.resume = input.resume;
+
     const { error: profileError } = await adminClient
       .from("profiles")
-      .update({
-        full_name: input.full_name,
-        job_title: input.job_title || null,
-        resume: input.resume || null,
-        department_id: input.department_id || null,
-        is_active: true,
-      })
+      .update(profileUpdate)
       .eq("id", userId)
       .select("id")
       .single();
@@ -148,5 +170,5 @@ Deno.serve(async (request) => {
     return json({ error: `Account was rolled back: ${message}` }, 500);
   }
 
-  return json({ user_id: userId }, 201);
+  return json({ user_id: userId, login_enabled: !directoryOnly }, 201);
 });

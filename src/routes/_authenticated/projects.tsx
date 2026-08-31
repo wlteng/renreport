@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { UserPlus } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/AppShell";
@@ -19,9 +20,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/useSession";
-import { useDepartments, useProjects, useVisibleReports } from "@/hooks/useData";
+import {
+  useDepartments,
+  useProjectMembers,
+  useProjects,
+  useStaffDirectory,
+  useVisibleReports,
+} from "@/hooks/useData";
 import { hasCapability } from "@/lib/roles";
-import { firstValidationError, miningProjectSchema } from "@/lib/validation";
+import { firstValidationError, miningProjectSchema, projectMemberSchema } from "@/lib/validation";
 
 export const Route = createFileRoute("/_authenticated/projects")({
   head: () => ({
@@ -50,9 +57,11 @@ const licenseLabel: Record<string, string> = {
 };
 
 function ProjectsPage() {
-  const { roles, permissions } = useMe();
+  const { user, roles, permissions } = useMe();
   const projects = useProjects();
   const departments = useDepartments();
+  const people = useStaffDirectory();
+  const projectMembers = useProjectMembers();
   const recent = useVisibleReports({});
   const queryClient = useQueryClient();
   const editable = hasCapability(permissions, "manage_projects", roles);
@@ -68,6 +77,33 @@ function ProjectsPage() {
   const [areaKm2, setAreaKm2] = useState("");
   const [description, setDescription] = useState("");
   const [departmentId, setDepartmentId] = useState("");
+  const [assignmentProjectId, setAssignmentProjectId] = useState<string | null>(null);
+  const [staffSearch, setStaffSearch] = useState("");
+
+  const assignmentProject = projects.data?.find((project) => project.id === assignmentProjectId);
+  const assignedUserIds = useMemo(
+    () =>
+      new Set(
+        (projectMembers.data ?? [])
+          .filter((member) => member.project_id === assignmentProjectId)
+          .map((member) => member.user_id),
+      ),
+    [assignmentProjectId, projectMembers.data],
+  );
+  const assignedPeople = useMemo(
+    () => (people.data ?? []).filter((person) => assignedUserIds.has(person.id)),
+    [assignedUserIds, people.data],
+  );
+  const availablePeople = useMemo(() => {
+    const term = staffSearch.trim().toLocaleLowerCase();
+    return (people.data ?? [])
+      .filter((person) => {
+        if (!person.is_active || assignedUserIds.has(person.id)) return false;
+        if (!term) return true;
+        return `${person.full_name ?? ""} ${person.email}`.toLocaleLowerCase().includes(term);
+      })
+      .slice(0, 20);
+  }, [assignedUserIds, people.data, staffSearch]);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -84,9 +120,11 @@ function ProjectsPage() {
         description,
       });
       if (!parsed.success) throw new Error(firstValidationError(parsed.error));
+      if (!user) throw new Error("Your session has expired");
       const input = parsed.data;
       const { error } = await supabase.from("projects").insert({
         ...input,
+        owner_id: user.id,
         project_code: input.project_code ?? null,
         legal_name: input.legal_name ?? null,
         location: input.location ?? null,
@@ -114,6 +152,47 @@ function ProjectsPage() {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : "Could not create mine operation"),
+  });
+
+  const assignMember = useMutation({
+    mutationFn: async (userId: string) => {
+      const parsed = projectMemberSchema.safeParse({
+        project_id: assignmentProjectId,
+        user_id: userId,
+      });
+      if (!parsed.success) throw new Error(firstValidationError(parsed.error));
+      const { error } = await supabase.from("project_members").insert(parsed.data);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Staff member assigned");
+      setStaffSearch("");
+      queryClient.invalidateQueries({ queryKey: ["project-members"] });
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : "Could not assign staff"),
+  });
+
+  const removeMember = useMutation({
+    mutationFn: async (userId: string) => {
+      const parsed = projectMemberSchema.safeParse({
+        project_id: assignmentProjectId,
+        user_id: userId,
+      });
+      if (!parsed.success) throw new Error(firstValidationError(parsed.error));
+      const { error } = await supabase
+        .from("project_members")
+        .delete()
+        .eq("project_id", parsed.data.project_id)
+        .eq("user_id", parsed.data.user_id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Staff member removed");
+      queryClient.invalidateQueries({ queryKey: ["project-members"] });
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : "Could not remove staff"),
   });
 
   const archive = useMutation({
@@ -268,6 +347,123 @@ function ProjectsPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={!!assignmentProject}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) return;
+          setAssignmentProjectId(null);
+          setStaffSearch("");
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Assign staff to {assignmentProject?.name}</DialogTitle>
+            <DialogDescription>
+              Search active staff by name or email. Only the project creator or an admin can change
+              these assignments.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Assigned staff</p>
+            {projectMembers.error ? (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                Could not load project assignments: {projectMembers.error.message}
+              </p>
+            ) : null}
+            <div className="divide-y divide-border rounded-lg border border-border">
+              {assignedPeople.map((person) => (
+                <div
+                  key={person.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {person.full_name || person.email}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {person.email || "No login email"}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    disabled={removeMember.isPending}
+                    onClick={() => removeMember.mutate(person.id)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+              {!projectMembers.isLoading && assignedPeople.length === 0 ? (
+                <p className="px-3 py-5 text-center text-sm text-muted-foreground">
+                  No staff assigned yet.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-3 border-t border-border pt-4">
+            <Field label="Find staff by name or email" id="staff-search">
+              <Input
+                id="staff-search"
+                type="search"
+                value={staffSearch}
+                placeholder="Name or email address"
+                onChange={(event) => setStaffSearch(event.target.value)}
+              />
+            </Field>
+            {people.error ? (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                Could not load staff: {people.error.message}
+              </p>
+            ) : null}
+            <div className="max-h-64 divide-y divide-border overflow-y-auto rounded-lg border border-border">
+              {availablePeople.map((person) => (
+                <div
+                  key={person.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {person.full_name || person.email}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {person.email || "No login email"}
+                      {person.job_title ? ` · ${person.job_title}` : ""}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={assignMember.isPending}
+                    onClick={() => assignMember.mutate(person.id)}
+                  >
+                    Assign
+                  </Button>
+                </div>
+              ))}
+              {!people.isLoading && availablePeople.length === 0 ? (
+                <p className="px-3 py-5 text-center text-sm text-muted-foreground">
+                  No matching unassigned staff.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Done
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {projects.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading mine projects…</p>
       ) : null}
@@ -275,6 +471,11 @@ function ProjectsPage() {
         {(projects.data ?? []).map((project) => {
           const items = activity(project.id);
           const hours = items.reduce((sum, report) => sum + Number(report.hours_spent), 0);
+          const canManageStaff = project.owner_id === user?.id || roles.includes("admin");
+          const assignedCount = (projectMembers.data ?? []).filter(
+            (member) => member.project_id === project.id,
+          ).length;
+          const owner = people.data?.find((person) => person.id === project.owner_id);
           return (
             <article key={project.id} className="logbook-card p-5">
               <div className="flex items-start justify-between gap-3">
@@ -284,14 +485,30 @@ function ProjectsPage() {
                     {project.project_code || "No code"} · {project.status}
                   </p>
                 </div>
-                {editable && project.status !== "archived" ? (
-                  <button
-                    onClick={() => archive.mutate(project.id)}
-                    className="text-xs text-muted-foreground hover:text-destructive"
-                  >
-                    Archive
-                  </button>
-                ) : null}
+                <div className="flex shrink-0 items-center gap-1">
+                  {canManageStaff ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setAssignmentProjectId(project.id)}
+                    >
+                      <UserPlus />
+                      Staff
+                    </Button>
+                  ) : null}
+                  {editable && project.status !== "archived" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => archive.mutate(project.id)}
+                    >
+                      Archive
+                    </Button>
+                  ) : null}
+                </div>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
                 <Detail
@@ -327,7 +544,10 @@ function ProjectsPage() {
                 </p>
               ) : null}
               <p className="mt-4 text-xs text-muted-foreground">
-                {items.length} work logs · {hours.toFixed(1)}h reported
+                {items.length} work logs · {hours.toFixed(1)}h reported · {assignedCount} staff
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Created by {owner?.full_name || owner?.email || "Unknown user"}
               </p>
             </article>
           );

@@ -10,6 +10,7 @@ DECLARE
   expected_feed BOOLEAN;
   expected_audit BOOLEAN;
   expected_matrix_write BOOLEAN;
+  expected_member_manage BOOLEAN;
   can_see_own BOOLEAN;
   can_see_other BOOLEAN;
   visible_audit_count INTEGER;
@@ -40,6 +41,8 @@ BEGIN
     expected_feed := public.has_permission(persona.id, 'view_staff_feed');
     expected_audit := public.has_permission(persona.id, 'view_audit_log');
     expected_matrix_write := public.has_permission(persona.id, 'manage_permissions');
+    expected_member_manage := persona.role = 'admin'::public.app_role
+      OR persona.id = '10000000-0000-4000-8000-000000000002'::uuid;
 
     SELECT EXISTS (
       SELECT 1 FROM public.reports WHERE user_id = persona.id
@@ -124,18 +127,36 @@ BEGIN
         persona.email, expected_matrix_write;
     END IF;
 
-    RAISE NOTICE 'PASS % (%) submit=% feed=% audit=% matrix=%',
+    DELETE FROM public.project_members
+    WHERE project_id = '30000000-0000-4000-8000-000000000001'
+      AND user_id = '10000000-0000-4000-8000-000000000004';
+    GET DIAGNOSTICS affected_rows = ROW_COUNT;
+    IF (affected_rows = 1) IS DISTINCT FROM expected_member_manage THEN
+      RAISE EXCEPTION '% project-member management does not match owner/admin=%',
+        persona.email, expected_member_manage;
+    END IF;
+
+    IF expected_member_manage THEN
+      INSERT INTO public.project_members (project_id, user_id)
+      VALUES (
+        '30000000-0000-4000-8000-000000000001',
+        '10000000-0000-4000-8000-000000000004'
+      );
+    END IF;
+
+    RAISE NOTICE 'PASS % (%) submit=% feed=% audit=% matrix=% project_members=%',
       persona.email,
       persona.role,
       expected_submit,
       expected_feed,
       expected_audit,
-      expected_matrix_write;
+      expected_matrix_write,
+      expected_member_manage;
   END LOOP;
 END;
 $$;
 
 RESET ROLE;
-SELECT pass('Capability matrix matches report, audit, and matrix RLS behavior for all personas');
+SELECT pass('Capability matrix and owner-scoped project assignments match RLS for all personas');
 SELECT * FROM finish();
 ROLLBACK;

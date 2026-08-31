@@ -71,6 +71,11 @@ export const miningProjectSchema = z.object({
   description: optionalTrimmed(2000),
 });
 
+export const projectMemberSchema = z.object({
+  project_id: z.string().uuid(),
+  user_id: z.string().uuid(),
+});
+
 export const workLogSchema = z
   .object({
     report_date: date,
@@ -143,15 +148,31 @@ export const compensationSchema = z.object({
   standard_hours: z.coerce.number().positive().max(744),
 });
 
-export const createStaffSchema = compensationSchema.omit({ user_id: true }).extend({
-  full_name: trimmed(1, 120, "Full name"),
-  email: z.string().trim().toLowerCase().email().max(254),
-  password: z.string().min(8, "Password must be at least 8 characters").max(128),
-  job_title: optionalTrimmed(120),
-  resume: optionalTrimmed(5000),
-  department_id: optionalUuid,
-  role: appRoleSchema,
-});
+export const createStaffSchema = compensationSchema
+  .omit({ user_id: true })
+  .extend({
+    full_name: trimmed(1, 120, "Full name"),
+    email: z.preprocess(
+      (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+      z.string().trim().toLowerCase().email().max(254).optional(),
+    ),
+    password: z.preprocess(
+      (value) => (typeof value === "string" && value === "" ? undefined : value),
+      z.string().min(8, "Password must be at least 8 characters").max(128).optional(),
+    ),
+    job_title: optionalTrimmed(120),
+    resume: optionalTrimmed(5000),
+    department_id: optionalUuid,
+    role: z.literal("staff"),
+  })
+  .superRefine((value, context) => {
+    if (!!value.email === !!value.password) return;
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [value.email ? "password" : "email"],
+      message: "Email and password must be added together",
+    });
+  });
 
 export function firstValidationError(error: z.ZodError): string {
   const issue = error.issues[0];
