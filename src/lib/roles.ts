@@ -116,9 +116,3 @@ export const WORK_STATUS_LABEL: Record<string, string> = {
   in_progress: "In progress",
   blocked: "Blocked",
 };
-
-export const SHIFT_LABEL: Record<string, string> = {
-  day: "Day shift",
-  night: "Night shift",
-  other: "Other shift",
-};

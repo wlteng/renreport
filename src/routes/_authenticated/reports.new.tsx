@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ImagePlus, X } from "lucide-react";
+import { FilePenLine, ImagePlus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -369,7 +369,42 @@ function SubmitWork() {
               navigate({ to: "/reports/new", search: { correct: source.data!.id }, replace: true })
             }
           >
-            {t("Submit correction")}
+            {t("Create corrected version")}
+          </Button>
+        </div>
+      </>
+    );
+  }
+
+  if (
+    mode !== "new" &&
+    source.data &&
+    !availableProjects.some((project) => project.id === source.data?.project_id)
+  ) {
+    return (
+      <>
+        <PageHeader title={mode === "correct" ? "Create corrected version" : "Edit work log"} />
+        <div className="logbook-card p-6 text-center sm:p-10">
+          <FilePenLine className="mx-auto size-8 text-primary" aria-hidden="true" />
+          <h2 className="mt-3 font-semibold">
+            {mode === "correct"
+              ? t("A corrected version cannot be created")
+              : t("This work log cannot be edited")}
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {mode === "correct"
+              ? t(
+                  "This project must be active and assigned to you before you can create a corrected version.",
+                )
+              : t(
+                  "This project must be active and assigned to you before you can edit this work log.",
+                )}
+          </p>
+          <p className="mt-3 text-xs font-medium">
+            {t("Original work log")}: {source.data.title} · {source.data.report_date}
+          </p>
+          <Button className="mt-5" onClick={() => navigate({ to: "/dashboard" })}>
+            {t("Return to dashboard")}
           </Button>
         </div>
       </>
@@ -396,7 +431,7 @@ function SubmitWork() {
           mode === "edit"
             ? "Edit work log"
             : mode === "correct"
-              ? "Submit correction"
+              ? "Create corrected version"
               : "Submit work log"
         }
         action={
@@ -418,17 +453,34 @@ function SubmitWork() {
           </select>
         }
       />
-      {mode !== "new" && source.data ? (
+      {mode === "correct" && source.data ? (
+        <div
+          role="status"
+          className="mb-5 flex gap-3 rounded-xl border border-primary/25 bg-stat-gold/60 px-4 py-4"
+        >
+          <FilePenLine className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="font-semibold">{t("You are creating a corrected version")}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t(
+                "The original work log is locked and stays unchanged in history. This form is prefilled from it; update what needs correcting, then submit the new version.",
+              )}
+            </p>
+            <p className="mt-2 truncate text-xs font-medium">
+              {t("Original work log")}: {source.data.title} · {source.data.report_date}
+              {source.data.report_time ? ` ${source.data.report_time.slice(0, 5)}` : ""}
+            </p>
+          </div>
+        </div>
+      ) : mode === "edit" && source.data ? (
         <div className="mb-5 rounded-lg border border-border bg-stat-gold/60 px-4 py-3">
           <p className="text-sm font-medium">
-            {mode === "edit" ? t("Editing") : t("Correcting")}: {source.data.title}
+            {t("Editing")}: {source.data.title}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {source.data.report_date}
             {source.data.report_time ? ` ${source.data.report_time.slice(0, 5)}` : ""} ·{" "}
-            {mode === "edit"
-              ? t("Editable for 1 hour after submission.")
-              : t("The original stays in the history of the corrected log.")}
+            {t("Editable for 1 hour after submission.")}
           </p>
         </div>
       ) : null}
@@ -702,7 +754,7 @@ function SubmitWork() {
               : mode === "edit"
                 ? t("Save changes")
                 : mode === "correct"
-                  ? t("Submit correction")
+                  ? t("Create corrected version")
                   : t("Submit work")}
           </Button>
         </div>

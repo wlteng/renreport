@@ -1,5 +1,5 @@
 import { Minus, Plus, RotateCcw } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 import type { ReportRow } from "@/hooks/useData";
 import { useLanguage } from "@/lib/i18n";
 import { reportImageUrl } from "@/lib/reportImages";
-import { REPORT_TYPE_LABEL, SHIFT_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
+import { REPORT_TYPE_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { reportStamp, STATUS_TONE } from "@/lib/workLogs";
 
@@ -127,15 +127,12 @@ export function WorkLogImages({
         type="button"
         onClick={open(image)}
         aria-label={t("Photo")}
-        className="block max-w-full overflow-hidden rounded-lg"
+        className="block w-full overflow-hidden rounded-lg"
       >
         <img
           src={reportImageUrl(image)}
           alt=""
-          className={cn(
-            "block h-auto max-w-full object-contain",
-            compact ? "max-h-56" : "max-h-80",
-          )}
+          className={cn("block h-auto object-contain", compact ? "max-h-56 max-w-full" : "w-full")}
         />
       </button>
     );
@@ -157,6 +154,37 @@ export function WorkLogImages({
   );
 }
 
+/** Compact feed preview that opens the first attached photo in the lightbox. */
+export function WorkLogThumbnail({
+  images,
+  onOpen,
+}: {
+  images: string[] | null | undefined;
+  onOpen: (src: string) => void;
+}) {
+  const { t } = useLanguage();
+  if (!images?.length) return null;
+  const image = images[0]!;
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen(reportImageUrl(image));
+      }}
+      aria-label={t("Photo")}
+      className="relative size-14 shrink-0 overflow-hidden rounded-lg border border-border bg-muted transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-16"
+    >
+      <img src={reportImageUrl(image)} alt="" className="size-full object-cover" />
+      {images.length > 1 ? (
+        <span className="absolute bottom-1 right-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+          +{images.length - 1}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 export function ReportBadges({ report }: { report: ReportRow }) {
   const { t } = useLanguage();
   return (
@@ -168,7 +196,6 @@ export function ReportBadges({ report }: { report: ReportRow }) {
         {t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type)}
         {report.activity_detail ? ` · ${report.activity_detail}` : ""}
       </Badge>
-      <Badge variant="outline">{t(SHIFT_LABEL[report.shift] ?? report.shift)}</Badge>
       <Badge variant="outline">{Number(report.hours_spent).toFixed(1)}h</Badge>
     </div>
   );
@@ -220,6 +247,7 @@ export function WorkLogDialog({
   personName,
   notice,
   actions,
+  showCloseAction = true,
   onClose,
   onOpenImage,
 }: {
@@ -229,10 +257,12 @@ export function WorkLogDialog({
   personName?: string | undefined;
   notice?: ReactNode;
   actions?: ReactNode;
+  showCloseAction?: boolean;
   onClose: () => void;
   onOpenImage: (src: string) => void;
 }) {
   const { t } = useLanguage();
+  const contentRef = useRef<HTMLDivElement>(null);
   return (
     <Dialog
       open={report !== null}
@@ -240,7 +270,15 @@ export function WorkLogDialog({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent
+        ref={contentRef}
+        tabIndex={-1}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          contentRef.current?.focus({ preventScroll: true });
+        }}
+        className="max-h-[90vh] overflow-y-auto focus:outline-none sm:max-w-lg"
+      >
         {report ? (
           <>
             <DialogHeader>
@@ -277,12 +315,16 @@ export function WorkLogDialog({
               </section>
             ) : null}
             {notice}
-            <DialogFooter className="gap-2 sm:justify-between">
-              {actions ?? <span />}
-              <DialogClose asChild>
-                <Button type="button">{t("Close")}</Button>
-              </DialogClose>
-            </DialogFooter>
+            {actions || showCloseAction ? (
+              <DialogFooter className="sm:justify-between">
+                {actions ?? <span />}
+                {showCloseAction ? (
+                  <DialogClose asChild>
+                    <Button type="button">{t("Close")}</Button>
+                  </DialogClose>
+                ) : null}
+              </DialogFooter>
+            ) : null}
           </>
         ) : null}
       </DialogContent>
