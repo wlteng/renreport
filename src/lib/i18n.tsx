@@ -294,6 +294,11 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   Date: "日期",
   Time: "时间",
   "Choose an active project": "选择进行中的项目",
+  "Loading assigned projects…": "正在加载已分配的项目……",
+  "You must be assigned to an active project before submitting work.":
+    "提交工作前，必须先将您分配到一个进行中的项目。",
+  "You must be assigned to this active project before submitting work.":
+    "提交工作前，必须先将您分配到这个进行中的项目。",
   "Normal activity": "日常工作",
   "Content input": "内容录入",
   "Create / develop": "创建 / 开发",

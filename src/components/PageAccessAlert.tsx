@@ -33,10 +33,9 @@ function pageScope(pathname: string): AccessRule[] {
   }
   if (pathname === "/reports/new") {
     return [
-      { roles: ["staff"], detail: "Can submit work only to assigned active projects." },
       {
-        roles: ["admin", "boss", "manager"],
-        detail: "Can submit work to active projects visible to their account.",
+        roles: ROLE_ORDER,
+        detail: "Can submit work only to assigned active projects.",
       },
     ];
   }

@@ -101,18 +101,17 @@ function SubmitWork() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const allowed = !!profile?.is_active && hasCapability(permissions, "submit_work", roles);
-  const isStaffOnly = roles.length > 0 && roles.every((role) => role === "staff");
   const userId = user?.id;
   const availableProjects = useMemo(() => {
     const activeProjects = projects.data ?? [];
-    if (!isStaffOnly || !userId) return activeProjects;
+    if (!userId) return [];
     const assignedProjectIds = new Set(
       (projectMembers.data ?? [])
         .filter((member) => member.user_id === userId)
         .map((member) => member.project_id),
     );
     return activeProjects.filter((project) => assignedProjectIds.has(project.id));
-  }, [isStaffOnly, projectMembers.data, projects.data, userId]);
+  }, [projectMembers.data, projects.data, userId]);
 
   const [date, setDate] = useState(todayForDateInput);
   const [time, setTime] = useState(nowForTimeInput);
@@ -209,6 +208,9 @@ function SubmitWork() {
       if (!parsed.success) throw new Error(firstValidationError(parsed.error));
       if (!user) throw new Error("Your session has expired");
       const input = parsed.data;
+      if (!availableProjects.some((project) => project.id === input.project_id)) {
+        throw new Error(t("You must be assigned to this active project before submitting work."));
+      }
       const reportId = crypto.randomUUID();
       const imagePaths: string[] = [];
       try {
@@ -255,6 +257,23 @@ function SubmitWork() {
           capability.
         </p>
       </div>
+    );
+  }
+
+  if (projects.isLoading || projectMembers.isLoading) {
+    return <p className="text-sm text-muted-foreground">{t("Loading assigned projects…")}</p>;
+  }
+
+  if (availableProjects.length === 0) {
+    return (
+      <>
+        <PageHeader title="Submit work log" />
+        <div className="logbook-card p-10 text-center">
+          <p className="text-sm text-muted-foreground">
+            {t("You must be assigned to an active project before submitting work.")}
+          </p>
+        </div>
+      </>
     );
   }
 
