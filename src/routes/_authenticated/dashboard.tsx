@@ -326,7 +326,7 @@ function WorkLogDialog({
                     )}
               </p>
             ) : null}
-            <DialogFooter className="gap-2 sm:justify-between">
+            <DialogFooter className="sm:justify-between">
               {canSubmitWork ? (
                 <div className="flex flex-wrap gap-2">
                   {editable ? (

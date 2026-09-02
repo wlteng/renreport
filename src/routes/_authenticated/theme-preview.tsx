@@ -132,7 +132,7 @@ export const Route = createFileRoute("/_authenticated/theme-preview")({
 });
 
 function ThemePreview() {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const [selected, setSelected] = useState<string | null>(
     () => savedThemeChoice() ?? APPLIED_THEME_ID,
   );
@@ -165,7 +165,7 @@ function ThemePreview() {
         <div>
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Sparkles className="size-4 text-warning" />
-            Ren Report
+            {t("Ren Report")}
           </div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{copy.title}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{copy.note}</p>

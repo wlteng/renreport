@@ -106,7 +106,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="px-3 pb-6">
           <div className="flex items-center gap-2 text-base font-semibold tracking-tight">
             <img src="/icons/icon-192.png" alt="" className="size-8 rounded-lg" />
-            Ren Report
+            {t("Ren Report")}
           </div>
           <div className="logbook-label mt-1">
             {roles.length ? t(ROLE_LABEL[highestRole(roles)]) : "—"}
@@ -136,10 +136,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border bg-card/90 px-4 backdrop-blur lg:ml-60 lg:px-10">
+      <header className="sticky top-0 z-40 flex min-h-[calc(4rem+env(safe-area-inset-top,0px))] items-center justify-between border-b border-border bg-card/90 pb-0 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pt-[env(safe-area-inset-top,0px)] backdrop-blur lg:ml-60 lg:px-10">
         <div className="flex items-center gap-2 text-sm font-semibold tracking-tight lg:hidden">
           <img src="/icons/icon-192.png" alt="" className="size-7 rounded-md" />
-          Ren Report
+          {t("Ren Report")}
         </div>
         <div className="hidden text-sm text-muted-foreground lg:block">
           {t("Mining operations logbook")}
@@ -217,14 +217,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         </DropdownMenu>
       </header>
 
-      <main className="px-4 pb-28 pt-6 lg:ml-60 lg:px-10 lg:pb-12">
+      <main className="pb-28 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pt-6 lg:ml-60 lg:px-10 lg:pb-12">
         <div className="mx-auto w-full max-w-5xl">
           {children}
           {location.pathname !== "/theme-preview" ? <PageAccessAlert /> : null}
         </div>
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-1 overflow-x-auto border-t border-border bg-card px-1 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pt-2 lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-1 overflow-x-auto border-t border-border bg-card pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pl-[max(0.25rem,env(safe-area-inset-left,0px))] pr-[max(0.25rem,env(safe-area-inset-right,0px))] pt-2 lg:hidden">
         {items.map((item) => (
           <Link
             key={item.to}

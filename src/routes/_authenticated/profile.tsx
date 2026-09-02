@@ -1,5 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -31,6 +32,7 @@ function ProfilePage() {
   const { t } = useLanguage();
   const departments = useDepartments();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [fullName, setFullName] = useState("");
   const [jobTitle, setJobTitle] = useState("");
@@ -61,6 +63,13 @@ function ProfilePage() {
 
   const deptName =
     (departments.data ?? []).find((d) => d.id === profile?.department_id)?.name ?? t("Unassigned");
+
+  async function signOut() {
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    await supabase.auth.signOut();
+    navigate({ to: "/auth", replace: true });
+  }
 
   return (
     <>
@@ -122,6 +131,15 @@ function ProfilePage() {
           </div>
         </div>
       </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-6 w-full text-destructive hover:text-destructive sm:w-auto"
+        onClick={() => void signOut()}
+      >
+        <LogOut />
+        {t("Sign out")}
+      </Button>
     </>
   );
 }

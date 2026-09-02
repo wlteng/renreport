@@ -36,7 +36,7 @@ export function AdminWorkspace({
   const { t } = useLanguage();
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-card">
+    <div className="flex min-h-screen overflow-hidden bg-card pt-[env(safe-area-inset-top,0px)]">
       <aside
         aria-label={t("Admin navigation")}
         className={cn(
@@ -131,7 +131,7 @@ export function AdminWorkspace({
         </div>
       </aside>
 
-      <main className="min-h-screen min-w-0 flex-1 bg-background p-4 sm:p-6">
+      <main className="min-h-screen min-w-0 flex-1 bg-background pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pt-4 sm:p-6">
         {children}
         <PageAccessAlert adminOnly />
       </main>
