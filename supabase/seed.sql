@@ -265,6 +265,9 @@ INSERT INTO public.projects (
   project_code,
   legal_name,
   description,
+  category,
+  fund_amount,
+  fund_currency,
   status,
   color,
   owner_id,
@@ -281,6 +284,9 @@ VALUES (
   'ZLT-DEMO',
   'Zoloto Demonstration Mining LLC',
   'Safe demonstration project for validating the Ren Report logbook workflow.',
+  'mine',
+  250000.00,
+  'USD',
   'active',
   '#b98b2f',
   '10000000-0000-4000-8000-000000000002',
@@ -296,6 +302,9 @@ SET name = EXCLUDED.name,
     project_code = EXCLUDED.project_code,
     legal_name = EXCLUDED.legal_name,
     description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    fund_amount = EXCLUDED.fund_amount,
+    fund_currency = EXCLUDED.fund_currency,
     status = EXCLUDED.status,
     color = EXCLUDED.color,
     owner_id = EXCLUDED.owner_id,
@@ -318,6 +327,86 @@ FROM (
     ('10000000-0000-4000-8000-000000000004'::uuid)
 ) AS seeded(user_id)
 ON CONFLICT (project_id, user_id) DO NOTHING;
+
+INSERT INTO public.project_tasks (
+  id,
+  project_id,
+  title,
+  description,
+  assignee_id,
+  due_date,
+  is_completed,
+  completed_at,
+  created_by
+)
+VALUES
+  (
+    '50000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000001',
+    'Confirm the next exploration grid',
+    'Review the survey data and agree the next drilling coordinates.',
+    '10000000-0000-4000-8000-000000000003',
+    CURRENT_DATE + 7,
+    false,
+    NULL,
+    '10000000-0000-4000-8000-000000000002'
+  ),
+  (
+    '50000000-0000-4000-8000-000000000002',
+    '30000000-0000-4000-8000-000000000001',
+    'Complete the weekly safety inspection',
+    'Record the inspection findings in the project work log.',
+    '10000000-0000-4000-8000-000000000004',
+    CURRENT_DATE - 1,
+    true,
+    now() - interval '1 day',
+    '10000000-0000-4000-8000-000000000002'
+  )
+ON CONFLICT (id) DO UPDATE
+SET title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    assignee_id = EXCLUDED.assignee_id,
+    due_date = EXCLUDED.due_date,
+    is_completed = EXCLUDED.is_completed,
+    completed_at = EXCLUDED.completed_at;
+
+INSERT INTO public.project_milestones (
+  id,
+  project_id,
+  title,
+  description,
+  target_date,
+  is_achieved,
+  achieved_at,
+  created_by
+)
+VALUES
+  (
+    '60000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000001',
+    'Exploration permit confirmed',
+    'All documents approved for the current exploration area.',
+    CURRENT_DATE - 14,
+    true,
+    now() - interval '12 days',
+    '10000000-0000-4000-8000-000000000002'
+  ),
+  (
+    '60000000-0000-4000-8000-000000000002',
+    '30000000-0000-4000-8000-000000000001',
+    'First production sample',
+    'Recover and document the first verified production sample.',
+    CURRENT_DATE + 30,
+    false,
+    NULL,
+    '10000000-0000-4000-8000-000000000002'
+  )
+ON CONFLICT (id) DO UPDATE
+SET title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    target_date = EXCLUDED.target_date,
+    is_achieved = EXCLUDED.is_achieved,
+    achieved_at = EXCLUDED.achieved_at;
 
 INSERT INTO public.reports (
   id,

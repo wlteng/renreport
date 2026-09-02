@@ -16,10 +16,26 @@ const optionalNumber = (max: number) =>
   );
 
 export const currencySchema = z.enum(["CNY", "RUB", "USD", "MYR"]);
+export const projectCategorySchema = z.enum([
+  "mine",
+  "website",
+  "software",
+  "construction",
+  "investment",
+  "operations",
+  "other",
+]);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a valid date");
 const optionalUuid = z.preprocess(
   (value) => (value === "" ? undefined : value),
   z.string().uuid().optional(),
+);
+const optionalDate = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a valid date")
+    .optional(),
 );
 
 export const appRoleSchema = z.enum(["admin", "boss", "manager", "staff"]);
@@ -31,7 +47,15 @@ export const miningMethodSchema = z.enum([
   "other",
 ]);
 export const licenseStatusSchema = z.enum(["licensed", "in_process", "expired", "unknown"]);
-export const miningReportTypeSchema = z.enum([
+export const reportTypeSchema = z.enum([
+  "normal_activity",
+  "content_input",
+  "create_develop",
+  "study_research",
+  "planning_brainstorm",
+  "analysis",
+  "meeting",
+  "support",
   "site_operations",
   "exploration",
   "extraction",
@@ -40,6 +64,7 @@ export const miningReportTypeSchema = z.enum([
   "maintenance",
   "safety",
   "administration",
+  "other",
 ]);
 export const workStatusSchema = z.enum(["completed", "in_progress", "blocked"]);
 export const shiftSchema = z.enum(["day", "night", "other"]);
@@ -58,8 +83,9 @@ export const expenseCategorySchema = z.enum([
 export const expenseStatusSchema = z.enum(["draft", "submitted", "approved", "rejected"]);
 export const salaryTypeSchema = z.enum(["monthly", "hourly", "daily"]);
 
-export const miningProjectSchema = z.object({
+export const projectSchema = z.object({
   name: trimmed(1, 120, "Project name"),
+  category: projectCategorySchema,
   project_code: optionalTrimmed(40),
   legal_name: optionalTrimmed(160),
   location: optionalTrimmed(200),
@@ -69,6 +95,16 @@ export const miningProjectSchema = z.object({
   area_km2: optionalNumber(99999999999.999),
   department_id: optionalUuid,
   description: optionalTrimmed(2000),
+  url: optionalTrimmed(2048),
+  fund_amount: optionalNumber(999999999999.99),
+  fund_currency: currencySchema,
+});
+
+export const projectFundingSchema = z.object({
+  category: projectCategorySchema,
+  url: optionalTrimmed(2048),
+  fund_amount: optionalNumber(999999999999.99),
+  fund_currency: currencySchema,
 });
 
 export const projectMemberSchema = z.object({
@@ -76,11 +112,28 @@ export const projectMemberSchema = z.object({
   user_id: z.string().uuid(),
 });
 
+export const projectTaskSchema = z.object({
+  project_id: z.string().uuid(),
+  title: trimmed(1, 160, "Task title"),
+  description: optionalTrimmed(2000),
+  assignee_id: optionalUuid,
+  due_date: optionalDate,
+});
+
+export const projectMilestoneSchema = z.object({
+  project_id: z.string().uuid(),
+  title: trimmed(1, 160, "Milestone title"),
+  description: optionalTrimmed(2000),
+  target_date: optionalDate,
+});
+
 export const workLogSchema = z
   .object({
     report_date: date,
-    project_id: z.string().uuid("Choose an active mine project"),
-    report_type: miningReportTypeSchema,
+    report_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Choose a valid time"),
+    project_id: z.string().uuid("Choose an active project"),
+    report_type: reportTypeSchema,
+    activity_detail: optionalTrimmed(500),
     work_status: workStatusSchema,
     shift: shiftSchema,
     title: trimmed(1, 160, "Task or headline"),
@@ -97,7 +150,7 @@ export const workLogSchema = z
   });
 
 export const expenseSchema = z.object({
-  project_id: z.string().uuid("Choose an active mine project"),
+  project_id: z.string().uuid("Choose an active project"),
   expense_date: date,
   category: expenseCategorySchema,
   description: trimmed(1, 2000, "Description"),

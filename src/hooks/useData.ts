@@ -13,6 +13,8 @@ export type PermissionRow = Tables<"permissions">;
 export type RolePermissionRow = Tables<"role_permissions">;
 export type AuditLogRow = Tables<"admin_audit_log">;
 export type ProjectMemberRow = Tables<"project_members">;
+export type ProjectTaskRow = Tables<"project_tasks">;
+export type ProjectMilestoneRow = Tables<"project_milestones">;
 
 export type PersonRow = Pick<
   Tables<"profiles">,
@@ -45,9 +47,10 @@ export function useProjects() {
   });
 }
 
-export function useActiveProjects() {
+export function useActiveProjects(enabled = true) {
   return useQuery({
     queryKey: ["projects", "active"],
+    enabled,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("projects")
@@ -65,6 +68,40 @@ export function useProjectMembers() {
     queryKey: ["project-members"],
     queryFn: async () => {
       const { data, error } = await supabase.from("project_members").select("*");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useProjectTasks(projectId: string) {
+  return useQuery({
+    queryKey: ["project-tasks", projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("project_tasks")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("is_completed")
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .order("created_at");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useProjectMilestones(projectId: string) {
+  return useQuery({
+    queryKey: ["project-milestones", projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("project_milestones")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("is_achieved")
+        .order("target_date", { ascending: true, nullsFirst: false })
+        .order("created_at");
       if (error) throw error;
       return data ?? [];
     },

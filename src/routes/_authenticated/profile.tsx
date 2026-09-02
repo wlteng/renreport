@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/useSession";
 import { useDepartments } from "@/hooks/useData";
 import { ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/roles";
+import { useLanguage } from "@/lib/i18n";
 import { isStaffLoginEmail, staffLoginLabel } from "@/lib/staffAuth";
 
 export const Route = createFileRoute("/_authenticated/profile")({
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/_authenticated/profile")({
 
 function ProfilePage() {
   const { user, profile, roles } = useMe();
+  const { t } = useLanguage();
   const departments = useDepartments();
   const queryClient = useQueryClient();
 
@@ -50,7 +52,7 @@ function ProfilePage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Profile updated");
+      toast.success(t("Profile updated"));
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       queryClient.invalidateQueries({ queryKey: ["people"] });
     },
@@ -58,11 +60,11 @@ function ProfilePage() {
   });
 
   const deptName =
-    (departments.data ?? []).find((d) => d.id === profile?.department_id)?.name ?? "Unassigned";
+    (departments.data ?? []).find((d) => d.id === profile?.department_id)?.name ?? t("Unassigned");
 
   return (
     <>
-      <PageHeader title="Profile" subtitle="Your details and what your role allows." />
+      <PageHeader title="Profile" />
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <form
@@ -73,49 +75,49 @@ function ProfilePage() {
           }}
         >
           <div className="space-y-1.5">
-            <Label htmlFor="name">Full name</Label>
+            <Label htmlFor="name">{t("Full name")}</Label>
             <Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="job">Job title</Label>
+            <Label htmlFor="job">{t("Job title")}</Label>
             <Input id="job" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="phone">Phone</Label>
+            <Label htmlFor="phone">{t("Phone")}</Label>
             <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>
-              {profile?.email && isStaffLoginEmail(profile.email) ? "Username" : "Email"}
+              {t(profile?.email && isStaffLoginEmail(profile.email) ? "Username" : "Email")}
             </Label>
             <Input value={profile?.email ? staffLoginLabel(profile.email) : ""} readOnly disabled />
           </div>
           <div className="flex justify-end">
             <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? "Saving…" : "Save changes"}
+              {save.isPending ? t("Saving…") : t("Save changes")}
             </Button>
           </div>
         </form>
 
         <div className="logbook-card h-fit p-6">
-          <p className="logbook-label">Access</p>
+          <p className="logbook-label">{t("Access")}</p>
           <div className="mt-3 space-y-3">
             {roles.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No role assigned yet.</p>
+              <p className="text-sm text-muted-foreground">{t("No role assigned yet.")}</p>
             ) : (
               roles.map((r) => (
                 <div key={r}>
-                  <p className="text-sm font-medium">{ROLE_LABEL[r]}</p>
-                  <p className="text-xs text-muted-foreground">{ROLE_DESCRIPTION[r]}</p>
+                  <p className="text-sm font-medium">{t(ROLE_LABEL[r])}</p>
+                  <p className="text-xs text-muted-foreground">{t(ROLE_DESCRIPTION[r])}</p>
                 </div>
               ))
             )}
             <div className="border-t border-border pt-3">
-              <p className="logbook-label">Department</p>
+              <p className="logbook-label">{t("Department")}</p>
               <p className="mt-1 text-sm">{deptName}</p>
             </div>
             <p className="text-xs text-muted-foreground">
-              Roles and departments are set by an admin.
+              {t("Roles and departments are set by an admin.")}
             </p>
           </div>
         </div>

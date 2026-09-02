@@ -1,0 +1,51 @@
+export const PROJECT_CATEGORY_OPTIONS = [
+  { value: "mine", label: "Mine" },
+  { value: "website", label: "Website" },
+  { value: "software", label: "Software" },
+  { value: "construction", label: "Construction" },
+  { value: "investment", label: "Investment" },
+  { value: "operations", label: "Operations" },
+  { value: "other", label: "Other" },
+] as const;
+
+export const PROJECT_CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
+  PROJECT_CATEGORY_OPTIONS.map((category) => [category.value, category.label]),
+);
+
+export const PROJECT_LEGAL_NAME_LABEL: Record<string, string> = {
+  mine: "Legal name",
+  website: "Owner / company",
+  software: "Publisher / company",
+  construction: "Contractor / legal name",
+  investment: "Investment target",
+  operations: "Operating unit",
+  other: "Reference name",
+};
+
+export const PROJECT_LOCATION_LABEL: Record<string, string | undefined> = {
+  mine: "Location",
+  construction: "Site address",
+  investment: "Location",
+  operations: "Operating location",
+  other: "Location",
+};
+
+export const PROJECT_URL_LABEL: Record<string, string | undefined> = {
+  website: "Website URL",
+  software: "Web address",
+};
+
+export const MINING_METHOD_LABEL: Record<string, string> = {
+  alluvial: "Alluvial",
+  open_pit: "Open pit",
+  underground: "Underground",
+  exploration: "Exploration",
+  other: "Other",
+};
+
+export const LICENSE_STATUS_LABEL: Record<string, string> = {
+  licensed: "Licensed",
+  in_process: "In process",
+  expired: "Expired",
+  unknown: "Unknown",
+};

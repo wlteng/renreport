@@ -1,8 +1,18 @@
 import { Link } from "@tanstack/react-router";
-import { Building2, ChevronLeft, ChevronRight, ScrollText, ShieldCheck, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  ChevronLeft,
+  ChevronRight,
+  ScrollText,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { PageAccessAlert } from "@/components/PageAccessAlert";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export type AdminSection = "people" | "departments" | "permissions";
@@ -23,13 +33,14 @@ export function AdminWorkspace({
   children: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const { t } = useLanguage();
 
   return (
-    <div className="flex min-h-[calc(100vh-10rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+    <div className="flex min-h-screen overflow-hidden bg-card">
       <aside
-        aria-label="Admin navigation"
+        aria-label={t("Admin navigation")}
         className={cn(
-          "w-16 shrink-0 border-r border-border bg-sidebar transition-[width] duration-200 sm:w-16",
+          "sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-border bg-sidebar transition-[width] duration-200 sm:w-16",
           expanded && "sm:w-56",
         )}
       >
@@ -45,9 +56,9 @@ export function AdminWorkspace({
                 <ShieldCheck className="size-4" />
               </div>
               <div className="hidden min-w-0 sm:block">
-                <p className="truncate text-sm font-semibold">Admin</p>
+                <p className="truncate text-sm font-semibold">{t("Admin")}</p>
                 <p className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">
-                  Workspace
+                  {t("Workspace")}
                 </p>
               </div>
             </div>
@@ -56,8 +67,8 @@ export function AdminWorkspace({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label={expanded ? "Collapse admin sidebar" : "Expand admin sidebar"}
-            title={expanded ? "Collapse admin sidebar" : "Expand admin sidebar"}
+            aria-label={t(expanded ? "Collapse admin sidebar" : "Expand admin sidebar")}
+            title={t(expanded ? "Collapse admin sidebar" : "Expand admin sidebar")}
             className="hidden size-8 shrink-0 sm:inline-flex"
             onClick={() => setExpanded((current) => !current)}
           >
@@ -65,7 +76,7 @@ export function AdminWorkspace({
           </Button>
         </div>
 
-        <nav className="space-y-1 p-2">
+        <nav className="flex-1 space-y-1 p-2">
           {ADMIN_NAVIGATION.map((item) => {
             const Icon = item.icon;
             const active = activeSection === item.id;
@@ -75,7 +86,7 @@ export function AdminWorkspace({
                 to="/admin"
                 search={{ section: item.id }}
                 aria-current={active ? "page" : undefined}
-                title={!expanded ? item.label : undefined}
+                title={!expanded ? t(item.label) : undefined}
                 className={cn(
                   "flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm transition-colors",
                   active
@@ -84,7 +95,9 @@ export function AdminWorkspace({
                 )}
               >
                 <Icon className="size-4 shrink-0" />
-                {expanded ? <span className="hidden truncate sm:block">{item.label}</span> : null}
+                {expanded ? (
+                  <span className="hidden truncate sm:block">{t(item.label)}</span>
+                ) : null}
               </Link>
             );
           })}
@@ -92,7 +105,7 @@ export function AdminWorkspace({
             <Link
               to="/admin-audit"
               aria-current={activeSection === "audit" ? "page" : undefined}
-              title={!expanded ? "Audit log" : undefined}
+              title={!expanded ? t("Audit log") : undefined}
               className={cn(
                 "flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-colors",
                 activeSection === "audit"
@@ -101,13 +114,27 @@ export function AdminWorkspace({
               )}
             >
               <ScrollText className="size-4 shrink-0" />
-              {expanded ? <span className="hidden truncate sm:block">Audit log</span> : null}
+              {expanded ? <span className="hidden truncate sm:block">{t("Audit log")}</span> : null}
             </Link>
           ) : null}
         </nav>
+
+        <div className="border-t border-sidebar-border p-2">
+          <Link
+            to="/dashboard"
+            title={!expanded ? t("Back to app") : undefined}
+            className="flex h-10 items-center gap-3 rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground"
+          >
+            <ArrowLeft className="size-4 shrink-0" />
+            {expanded ? <span className="hidden truncate sm:block">{t("Back to app")}</span> : null}
+          </Link>
+        </div>
       </aside>
 
-      <section className="min-w-0 flex-1 bg-background p-4 sm:p-6">{children}</section>
+      <main className="min-h-screen min-w-0 flex-1 bg-background p-4 sm:p-6">
+        {children}
+        <PageAccessAlert adminOnly />
+      </main>
     </div>
   );
 }

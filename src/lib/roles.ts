@@ -24,10 +24,10 @@ export const ROLE_LABEL: Record<AppRole, string> = {
 };
 
 export const ROLE_DESCRIPTION: Record<AppRole, string> = {
-  admin: "Full control of people, mine operations, permissions, expenses and compensation.",
-  boss: "Oversees staff activity, mine projects and expense approvals.",
+  admin: "Full control of people, projects, permissions, expenses and compensation.",
+  boss: "Oversees staff activity, projects and expense approvals.",
   manager: "Monitors staff activity and project expenses.",
-  staff: "Submits mine work logs and project expenses.",
+  staff: "Submits project work logs and expenses.",
 };
 
 export function highestRole(roles: AppRole[]): AppRole {
@@ -78,6 +78,14 @@ export const can = {
 };
 
 export const REPORT_TYPES = [
+  { value: "normal_activity", label: "Normal activity" },
+  { value: "content_input", label: "Content input" },
+  { value: "create_develop", label: "Create / develop" },
+  { value: "study_research", label: "Study / research" },
+  { value: "planning_brainstorm", label: "Planning / brainstorm" },
+  { value: "analysis", label: "Analysis" },
+  { value: "meeting", label: "Meeting" },
+  { value: "support", label: "Support" },
   { value: "site_operations", label: "Site operations" },
   { value: "exploration", label: "Exploration" },
   { value: "extraction", label: "Extraction" },
@@ -86,6 +94,7 @@ export const REPORT_TYPES = [
   { value: "maintenance", label: "Maintenance" },
   { value: "safety", label: "Safety" },
   { value: "administration", label: "Administration" },
+  { value: "other", label: "Other" },
 ] as const;
 
 export type ReportType = (typeof REPORT_TYPES)[number]["value"];

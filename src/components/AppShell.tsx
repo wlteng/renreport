@@ -4,6 +4,7 @@ import {
   BarChart3,
   FileText,
   Home,
+  Languages,
   LogOut,
   PenLine,
   Pickaxe,
@@ -14,13 +15,20 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { PageAccessAlert } from "@/components/PageAccessAlert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useMe } from "@/hooks/useSession";
@@ -33,6 +41,7 @@ import {
   type PermissionKey,
 } from "@/lib/roles";
 import { staffLoginLabel } from "@/lib/staffAuth";
+import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 type NavItem = { to: string; label: string; icon: LucideIcon };
@@ -49,34 +58,26 @@ function profileInitials(name: string | null | undefined, email: string | undefi
   return email?.slice(0, 1).toUpperCase() || "U";
 }
 
-function navItemsFor(roles: AppRole[], permissions?: PermissionKey[]): NavItem[] {
-  const items: NavItem[] = [{ to: "/dashboard", label: "Home", icon: Home }];
-  if (hasCapability(permissions, "submit_work", roles)) {
-    items.push({ to: "/reports/new", label: "Submit work", icon: PenLine });
-  }
-  items.push({ to: "/reports", label: "My work", icon: FileText });
+function navItemsFor(
+  roles: AppRole[],
+  permissions: PermissionKey[] | undefined,
+  t: (text: string) => string,
+): NavItem[] {
+  const items: NavItem[] = [{ to: "/dashboard", label: t("Home"), icon: Home }];
   if (hasCapability(permissions, "view_staff_feed", roles)) {
-    items.push({ to: "/review", label: "Staff activity", icon: BarChart3 });
+    items.push({ to: "/review", label: t("Staff activity"), icon: BarChart3 });
   }
-  items.push({ to: "/projects", label: "Mine projects", icon: Pickaxe });
-  items.push({ to: "/expenses", label: "Expenses", icon: ReceiptText });
+  items.push({ to: "/projects", label: t("Projects"), icon: Pickaxe });
+  items.push({ to: "/expenses", label: t("Expenses"), icon: ReceiptText });
   return items;
 }
 
-export function PageHeader({
-  title,
-  subtitle,
-  action,
-}: {
-  title: string;
-  subtitle?: string;
-  action?: ReactNode;
-}) {
+export function PageHeader({ title, action }: { title: string; action?: ReactNode }) {
+  const { t } = useLanguage();
   return (
     <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-        {subtitle ? <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p> : null}
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t(title)}</h1>
       </div>
       {action}
     </header>
@@ -88,7 +89,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const items = navItemsFor(roles, permissions);
+  const { language, setLanguage, t } = useLanguage();
+  const items = navItemsFor(roles, permissions, t);
+  const mobileItems: NavItem[] = [
+    { to: "/dashboard", label: t("Home"), icon: Home },
+    { to: "/reports", label: t("My work"), icon: FileText },
+    ...items.filter((item) => item.to !== "/dashboard"),
+  ];
 
   async function signOut() {
     await queryClient.cancelQueries();
@@ -109,7 +116,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             Ren Report
           </div>
           <div className="logbook-label mt-1">
-            {roles.length ? ROLE_LABEL[highestRole(roles)] : "—"}
+            {roles.length ? t(ROLE_LABEL[highestRole(roles)]) : "—"}
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5">
@@ -120,7 +127,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                 isActive(item.to)
-                  ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                  ? "bg-sidebar-accent font-medium text-sidebar-primary"
                   : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
               )}
             >
@@ -142,13 +149,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           Ren Report
         </div>
         <div className="hidden text-sm text-muted-foreground lg:block">
-          Mining operations logbook
+          {t("Mining operations logbook")}
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              aria-label="Open profile menu"
+              aria-label={t("Open profile menu")}
               className="flex items-center gap-2 rounded-full outline-none ring-offset-background transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <Avatar className="size-9 border border-border">
@@ -162,54 +169,94 @@ export function AppShell({ children }: { children: ReactNode }) {
           <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel className="font-normal">
               <p className="truncate text-sm font-medium text-foreground">
-                {profile?.full_name || "Your account"}
+                {profile?.full_name || t("Your account")}
               </p>
               <p className="truncate text-xs text-muted-foreground">
                 {profile?.email ? staffLoginLabel(profile.email) : null}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {roles.length ? ROLE_LABEL[highestRole(roles)] : "No role assigned"}
+                {roles.length ? t(ROLE_LABEL[highestRole(roles)]) : t("No role assigned")}
               </p>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {hasCapability(permissions, "submit_work", roles) ? (
+              <DropdownMenuItem
+                asChild
+                className="bg-primary text-primary-foreground focus:bg-primary/90 focus:text-primary-foreground"
+              >
+                <Link to="/reports/new">
+                  <PenLine />
+                  {t("Submit work")}
+                </Link>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem asChild>
+              <Link to="/reports">
+                <FileText />
+                {t("My work")}
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             {roles.includes("admin") ? (
               <DropdownMenuItem asChild>
                 <Link to="/admin" search={{ section: "people" }}>
                   <Users />
-                  Admin workspace
+                  {t("Admin workspace")}
                 </Link>
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuItem asChild>
               <Link to="/profile">
                 <Settings />
-                Profile
+                {t("Profile")}
               </Link>
             </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Languages />
+                {t("Language")}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={language}
+                    onValueChange={(value) => {
+                      if (value === "en" || value === "zh") setLanguage(value);
+                    }}
+                  >
+                    <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="zh">中文</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:bg-destructive/10 focus:text-destructive"
               onSelect={() => void signOut()}
             >
               <LogOut />
-              Sign out
+              {t("Sign out")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
 
       <main className="px-4 pb-28 pt-6 lg:ml-60 lg:px-10 lg:pb-12">
-        <div className="mx-auto w-full max-w-5xl">{children}</div>
+        <div className="mx-auto w-full max-w-5xl">
+          {children}
+          {location.pathname !== "/theme-preview" ? <PageAccessAlert /> : null}
+        </div>
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-1 overflow-x-auto border-t border-border bg-card px-1 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pt-2 lg:hidden">
-        {items.map((item) => (
+        {mobileItems.map((item) => (
           <Link
             key={item.to}
             to={item.to}
             className={cn(
               "flex min-w-20 flex-1 flex-col items-center gap-1 px-2 py-1 text-[10px] transition-colors",
-              isActive(item.to) ? "text-foreground" : "text-muted-foreground",
+              isActive(item.to) ? "text-primary" : "text-muted-foreground",
             )}
           >
             <item.icon className="size-5" />
