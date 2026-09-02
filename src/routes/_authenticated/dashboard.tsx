@@ -1,13 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PenLine, Pencil, Trash2 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { ImageLightbox, WorkLogDialog, WorkLogImages } from "@/components/WorkLog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   useMyReports,
   usePeople,
@@ -148,6 +149,60 @@ function WorkLogRow({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** Correction button that explains the locked edit window; on touch screens the first tap shows the note. */
+function CorrectionLink({ reportId }: { reportId: string }) {
+  const { t } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const [touchReady, setTouchReady] = useState(false);
+  const pointerType = useRef<string | null>(null);
+  const explanation = t(
+    "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.",
+  );
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (!nextOpen) setTouchReady(false);
+        }}
+      >
+        <TooltipTrigger asChild>
+          <Button type="button" variant="outline" asChild>
+            <Link
+              to="/reports/new"
+              search={{ correct: reportId }}
+              onPointerDown={(event) => {
+                pointerType.current = event.pointerType;
+              }}
+              onKeyDown={() => {
+                pointerType.current = "keyboard";
+              }}
+              onClick={(event) => {
+                if (pointerType.current === "touch" && !touchReady) {
+                  event.preventDefault();
+                  setTouchReady(true);
+                  setOpen(true);
+                }
+              }}
+            >
+              <PenLine />
+              {t("Submit correction")}
+            </Link>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-72 text-pretty px-3 py-2 leading-relaxed">
+          {explanation}
+          <span className="mt-1 hidden font-medium [@media(pointer:coarse)]:block">
+            {t("Tap again on mobile to continue.")}
+          </span>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -326,12 +381,7 @@ function MyWorkSection({
                   </Button>
                 </>
               ) : (
-                <Button type="button" variant="outline" asChild>
-                  <Link to="/reports/new" search={{ correct: selected.id }}>
-                    <PenLine />
-                    {t("Submit correction")}
-                  </Link>
-                </Button>
+                <CorrectionLink reportId={selected.id} />
               )}
             </div>
           ) : null
