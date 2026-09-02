@@ -19,7 +19,14 @@ export type ProjectGitEventRow = Tables<"project_git_events">;
 
 export type PersonRow = Pick<
   Tables<"profiles">,
-  "id" | "email" | "full_name" | "job_title" | "resume" | "department_id" | "is_active"
+  | "id"
+  | "email"
+  | "full_name"
+  | "avatar_url"
+  | "job_title"
+  | "resume"
+  | "department_id"
+  | "is_active"
 >;
 export type StaffDirectoryRow = Pick<
   Tables<"profiles">,
@@ -145,14 +152,14 @@ export function usePeople() {
     queryFn: async () => {
       const withResume = await supabase
         .from("profiles")
-        .select("id, email, full_name, job_title, resume, department_id, is_active")
+        .select("id, email, full_name, avatar_url, job_title, resume, department_id, is_active")
         .order("full_name", { nullsFirst: false });
       if (!withResume.error) return withResume.data ?? [];
       if (!withResume.error.message.includes("profiles.resume")) throw withResume.error;
 
       const fallback = await supabase
         .from("profiles")
-        .select("id, email, full_name, job_title, department_id, is_active")
+        .select("id, email, full_name, avatar_url, job_title, department_id, is_active")
         .order("full_name", { nullsFirst: false });
       if (fallback.error) throw fallback.error;
       return (fallback.data ?? []).map((person) => ({ ...person, resume: null }));

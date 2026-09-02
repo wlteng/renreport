@@ -38,23 +38,12 @@ import {
   type AppRole,
   type PermissionKey,
 } from "@/lib/roles";
+import { personInitials } from "@/lib/people";
 import { staffLoginLabel } from "@/lib/staffAuth";
 import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 type NavItem = { to: string; label: string; icon: LucideIcon };
-
-function profileInitials(name: string | null | undefined, email: string | undefined): string {
-  const words = name?.trim().split(/\s+/).filter(Boolean) ?? [];
-  if (words.length > 0) {
-    return words
-      .slice(0, 2)
-      .map((word) => Array.from(word)[0])
-      .join("")
-      .toUpperCase();
-  }
-  return email?.slice(0, 1).toUpperCase() || "U";
-}
 
 function navItemsFor(
   roles: AppRole[],
@@ -154,7 +143,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Avatar className="size-9 border border-border">
                 <AvatarImage src={profile?.avatar_url ?? undefined} alt="" />
                 <AvatarFallback className="text-xs font-semibold">
-                  {profileInitials(profile?.full_name, profile?.email)}
+                  {personInitials(profile?.full_name, profile?.email)}
                 </AvatarFallback>
               </Avatar>
             </button>

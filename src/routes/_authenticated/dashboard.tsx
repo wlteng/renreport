@@ -4,17 +4,9 @@ import { PenLine, Pencil, Trash2 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
+import { ImageLightbox, WorkLogDialog, WorkLogImages } from "@/components/WorkLog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useMyReports,
@@ -28,9 +20,8 @@ import { todayForDateInput } from "@/lib/dates";
 import { deleteRecord } from "@/lib/deleteRecord";
 import { useLanguage, type AppLanguage } from "@/lib/i18n";
 import { isWithinEditWindow } from "@/lib/reportEdits";
-import { reportImageUrl } from "@/lib/reportImages";
-import { hasCapability, REPORT_TYPE_LABEL, SHIFT_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
-import { cn } from "@/lib/utils";
+import { hasCapability, WORK_STATUS_LABEL } from "@/lib/roles";
+import { currentReports, historyOf, reportMeta, rowKeyHandler, STATUS_TONE } from "@/lib/workLogs";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -53,39 +44,10 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 /** How many of the newest work logs are shown before the reader asks for more. */
 const RECENT_WORK_PAGE_SIZE = 6;
 
-/** Badge tones per work status, drawn from the logbook stat palette. */
-const STATUS_TONE: Record<string, string> = {
-  completed: "border-transparent bg-stat-teal text-secondary-foreground",
-  in_progress: "border-transparent bg-stat-gold text-foreground",
-  blocked: "border-transparent bg-stat-copper text-accent-foreground",
-};
-
 function isoDaysAgo(days: number) {
   const date = new Date();
   date.setDate(date.getDate() - days);
   return todayForDateInput(date);
-}
-
-/** Drops work logs that a later correction has replaced, keeping only the latest version. */
-function currentReports<T extends Pick<ReportRow, "id" | "supersedes_report_id">>(reports: T[]) {
-  const superseded = new Set(
-    reports.map((report) => report.supersedes_report_id).filter((id): id is string => !!id),
-  );
-  return reports.filter((report) => !superseded.has(report.id));
-}
-
-/** Earlier versions of a work log, newest first. */
-function historyOf(report: ReportRow, all: ReportRow[]) {
-  const byId = new Map(all.map((item) => [item.id, item]));
-  const history: ReportRow[] = [];
-  let cursor: ReportRow | undefined = report;
-  while (cursor?.supersedes_report_id) {
-    const previous = byId.get(cursor.supersedes_report_id);
-    if (!previous || history.includes(previous)) break;
-    history.push(previous);
-    cursor = previous;
-  }
-  return history;
 }
 
 function dayLabel(date: string, language: AppLanguage, t: (text: string) => string) {
@@ -136,41 +98,31 @@ function StatRow({ children }: { children: ReactNode }) {
   );
 }
 
-function reportMeta(report: ReportRow, projectName: string, t: (text: string) => string) {
-  return [
-    t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type) +
-      (report.activity_detail ? ` · ${report.activity_detail}` : ""),
-    projectName,
-    t(SHIFT_LABEL[report.shift] ?? report.shift),
-    `${Number(report.hours_spent).toFixed(1)}h`,
-  ].join(" · ");
-}
-
-function reportStamp(report: ReportRow) {
-  return `${report.report_date}${report.report_time ? ` ${report.report_time.slice(0, 5)}` : ""}`;
-}
-
 function WorkLogRow({
   report,
   projectName,
   onOpen,
+  onOpenImage,
 }: {
   report: ReportRow;
   projectName: string;
   onOpen: () => void;
+  onOpenImage: (src: string) => void;
 }) {
   const { t } = useLanguage();
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
-      className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none sm:px-5 sm:py-4"
+      onKeyDown={rowKeyHandler(onOpen)}
+      className="flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none sm:px-5 sm:py-4"
     >
       <span className="w-11 shrink-0 pt-0.5 text-xs font-semibold tabular-nums text-primary">
         {report.report_time ? report.report_time.slice(0, 5) : "—"}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-start justify-between gap-2">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {report.title}
           </span>
@@ -182,192 +134,20 @@ function WorkLogRow({
               {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
             </Badge>
           </span>
-        </span>
-        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-          {reportMeta(report, projectName, t)}
-        </span>
-        <span className="mt-1.5 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">
-          {report.content}
-        </span>
-      </span>
-    </button>
-  );
-}
-
-function ReportBadges({ report }: { report: ReportRow }) {
-  const { t } = useLanguage();
-  return (
-    <div className="flex flex-wrap gap-2">
-      <Badge className={STATUS_TONE[report.work_status]}>
-        {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
-      </Badge>
-      <Badge variant="outline">
-        {t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type)}
-        {report.activity_detail ? ` · ${report.activity_detail}` : ""}
-      </Badge>
-      <Badge variant="outline">{t(SHIFT_LABEL[report.shift] ?? report.shift)}</Badge>
-      <Badge variant="outline">{Number(report.hours_spent).toFixed(1)}h</Badge>
-    </div>
-  );
-}
-
-function ReportBody({ report, compact = false }: { report: ReportRow; compact?: boolean }) {
-  const { t } = useLanguage();
-  const text = compact ? "text-xs" : "text-sm";
-  return (
-    <div className="space-y-3">
-      <p className={cn("whitespace-pre-wrap leading-relaxed text-foreground/90", text)}>
-        {report.content}
-      </p>
-      {report.output_quantity !== null ? (
-        <p className="text-xs font-medium">
-          {t("Output")}: {Number(report.output_quantity).toLocaleString()} {report.output_unit}
-        </p>
-      ) : null}
-      {report.blockers ? (
-        <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-          {t("Blocker")}: {report.blockers}
-        </p>
-      ) : null}
-      {report.links ? (
-        <p className="break-all text-xs text-muted-foreground">{report.links}</p>
-      ) : null}
-      {report.image_urls?.length ? (
-        <div
-          className={cn(
-            "grid gap-2",
-            compact ? "grid-cols-4 sm:grid-cols-6" : "grid-cols-3 sm:grid-cols-4",
-          )}
-        >
-          {report.image_urls.map((image) => (
-            <a
-              key={image}
-              href={reportImageUrl(image)}
-              target="_blank"
-              rel="noreferrer"
-              className="aspect-square overflow-hidden rounded-md"
-            >
-              <img src={reportImageUrl(image)} alt="" className="size-full object-cover" />
-            </a>
-          ))}
         </div>
-      ) : null}
-    </div>
-  );
-}
-
-function WorkLogDialog({
-  report,
-  history,
-  projectName,
-  canSubmitWork,
-  deleting,
-  onClose,
-  onDelete,
-}: {
-  report: ReportRow | null;
-  history: ReportRow[];
-  projectName: string;
-  canSubmitWork: boolean;
-  deleting: boolean;
-  onClose: () => void;
-  onDelete: (report: ReportRow) => void;
-}) {
-  const { t } = useLanguage();
-  const editable = report ? isWithinEditWindow(report.created_at) : false;
-  return (
-    <Dialog
-      open={report !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        {report ? (
-          <>
-            <DialogHeader>
-              <DialogTitle className="pr-6">{report.title}</DialogTitle>
-              <DialogDescription>
-                {reportStamp(report)} · {projectName}
-                {history.length ? ` · ${t("Correction")}` : ""}
-              </DialogDescription>
-            </DialogHeader>
-            <ReportBadges report={report} />
-            <ReportBody report={report} />
-            {history.length ? (
-              <section className="space-y-3 border-t border-border pt-4">
-                <h3 className="logbook-label">{t("History")}</h3>
-                {history.map((previous) => (
-                  <details
-                    key={previous.id}
-                    className="rounded-lg border border-border bg-muted/40 px-3 py-2"
-                  >
-                    <summary className="cursor-pointer text-xs">
-                      <span className="font-medium text-foreground">{previous.title}</span>
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · {reportStamp(previous)} · {Number(previous.hours_spent).toFixed(1)}h ·{" "}
-                        {t("Superseded")}
-                      </span>
-                    </summary>
-                    <div className="mt-2">
-                      <ReportBody report={previous} compact />
-                    </div>
-                  </details>
-                ))}
-              </section>
-            ) : null}
-            {canSubmitWork ? (
-              <p className="text-xs text-muted-foreground">
-                {editable
-                  ? t("Editable for 1 hour after submission.")
-                  : t(
-                      "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.",
-                    )}
-              </p>
-            ) : null}
-            <DialogFooter className="sm:justify-between">
-              {canSubmitWork ? (
-                <div className="flex flex-wrap gap-2">
-                  {editable ? (
-                    <>
-                      <Button type="button" variant="outline" asChild>
-                        <Link to="/reports/new" search={{ edit: report.id }}>
-                          <Pencil />
-                          {t("Edit")}
-                        </Link>
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="text-destructive hover:text-destructive"
-                        disabled={deleting}
-                        onClick={() => onDelete(report)}
-                      >
-                        <Trash2 />
-                        {t("Delete")}
-                      </Button>
-                    </>
-                  ) : (
-                    <Button type="button" variant="outline" asChild>
-                      <Link to="/reports/new" search={{ correct: report.id }}>
-                        <PenLine />
-                        {t("Submit correction")}
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <span />
-              )}
-              <DialogClose asChild>
-                <Button type="button">{t("Close")}</Button>
-              </DialogClose>
-            </DialogFooter>
-          </>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {reportMeta(report, projectName, t)}
+        </p>
+        <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+          {report.content}
+        </p>
+        {report.image_urls?.length ? (
+          <div className="mt-2">
+            <WorkLogImages images={report.image_urls} compact onOpen={onOpenImage} />
+          </div>
         ) : null}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }
 
@@ -384,6 +164,7 @@ function MyWorkSection({
   const [visibleCount, setVisibleCount] = useState(RECENT_WORK_PAGE_SIZE);
   const [showExpandOptions, setShowExpandOptions] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const all = useMemo(() => reports.data ?? [], [reports.data]);
   const current = useMemo(() => currentReports(all), [all]);
@@ -405,6 +186,7 @@ function MyWorkSection({
   }, [current, visibleCount]);
   const selected = selectedId ? (all.find((report) => report.id === selectedId) ?? null) : null;
   const history = useMemo(() => (selected ? historyOf(selected, all) : []), [selected, all]);
+  const editable = selected ? isWithinEditWindow(selected.created_at) : false;
   const projectName = (id: string | null) =>
     id ? (projects.data?.find((project) => project.id === id)?.name ?? "—") : "—";
 
@@ -449,6 +231,7 @@ function MyWorkSection({
                   report={report}
                   projectName={projectName(report.project_id)}
                   onOpen={() => setSelectedId(report.id)}
+                  onOpenImage={setLightbox}
                 />
               ))}
             </div>
@@ -507,11 +290,54 @@ function MyWorkSection({
         report={selected}
         history={history}
         projectName={projectName(selected?.project_id ?? null)}
-        canSubmitWork={canSubmitWork}
-        deleting={remove.isPending}
         onClose={() => setSelectedId(null)}
-        onDelete={(report) => remove.mutate(report)}
+        onOpenImage={setLightbox}
+        notice={
+          canSubmitWork ? (
+            <p className="text-xs text-muted-foreground">
+              {editable
+                ? t("Editable for 1 hour after submission.")
+                : t(
+                    "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.",
+                  )}
+            </p>
+          ) : null
+        }
+        actions={
+          canSubmitWork && selected ? (
+            <div className="flex flex-wrap gap-2">
+              {editable ? (
+                <>
+                  <Button type="button" variant="outline" asChild>
+                    <Link to="/reports/new" search={{ edit: selected.id }}>
+                      <Pencil />
+                      {t("Edit")}
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    disabled={remove.isPending}
+                    onClick={() => remove.mutate(selected)}
+                  >
+                    <Trash2 />
+                    {t("Delete")}
+                  </Button>
+                </>
+              ) : (
+                <Button type="button" variant="outline" asChild>
+                  <Link to="/reports/new" search={{ correct: selected.id }}>
+                    <PenLine />
+                    {t("Submit correction")}
+                  </Link>
+                </Button>
+              )}
+            </div>
+          ) : null
+        }
       />
+      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
     </section>
   );
 }

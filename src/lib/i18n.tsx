@@ -245,6 +245,17 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "View all": "查看全部",
   "Show more": "显示更多",
   "Show all": "显示全部",
+  Photo: "照片",
+  "Zoom in": "放大",
+  "Zoom out": "缩小",
+  "Reset zoom": "还原",
+  "By person": "按人员",
+  entries: "条",
+  "Loading staff activity…": "正在加载员工动态……",
+  "Checking staff activity access…": "正在检查员工动态权限……",
+  "Your role does not have the View staff activity capability. An admin can enable it in the capability matrix.":
+    "您的角色没有查看员工动态的权限，管理员可在权限矩阵中开启。",
+  "No reports match these filters.": "没有符合筛选条件的记录。",
   "Delete project": "删除项目",
   "Delete this project?": "确定删除这个项目？",
   "This permanently removes the project together with its work logs and photos, expenses, tasks, milestones, staff assignments and GitHub activity. This cannot be undone.":

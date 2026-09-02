@@ -3,6 +3,9 @@ import { Filter } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/AppShell";
+import { ImageLightbox, WorkLogDialog, WorkLogImages } from "@/components/WorkLog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,18 +18,26 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { usePeople, useProjects, useVisibleReports } from "@/hooks/useData";
+import {
+  usePeople,
+  useProjects,
+  useVisibleReports,
+  type PersonRow,
+  type ReportRow,
+} from "@/hooks/useData";
 import { useMe } from "@/hooks/useSession";
 import { todayForDateInput } from "@/lib/dates";
 import { useLanguage } from "@/lib/i18n";
-import { reportImageUrl } from "@/lib/reportImages";
+import { personInitials } from "@/lib/people";
+import { hasCapability, REPORT_TYPES, WORK_STATUS_LABEL } from "@/lib/roles";
 import {
-  hasCapability,
-  REPORT_TYPES,
-  REPORT_TYPE_LABEL,
-  SHIFT_LABEL,
-  WORK_STATUS_LABEL,
-} from "@/lib/roles";
+  currentReports,
+  historyOf,
+  reportMeta,
+  reportStamp,
+  rowKeyHandler,
+  STATUS_TONE,
+} from "@/lib/workLogs";
 
 export const Route = createFileRoute("/_authenticated/review")({
   head: () => ({
@@ -49,6 +60,69 @@ function isoDaysAgo(days: number) {
   return todayForDateInput(d);
 }
 
+function displayName(person: PersonRow | undefined, t: (text: string) => string) {
+  return person?.full_name || person?.email || t("Unknown user");
+}
+
+function FeedRow({
+  report,
+  person,
+  projectName,
+  onOpen,
+  onOpenImage,
+}: {
+  report: ReportRow;
+  person: PersonRow | undefined;
+  projectName: string;
+  onOpen: () => void;
+  onOpenImage: (src: string) => void;
+}) {
+  const { t } = useLanguage();
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={rowKeyHandler(onOpen)}
+      className="flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none sm:px-5 sm:py-4"
+    >
+      <Avatar className="mt-0.5 size-9 shrink-0 border border-border">
+        <AvatarImage src={person?.avatar_url ?? undefined} alt="" />
+        <AvatarFallback className="text-xs font-semibold">
+          {personInitials(person?.full_name, person?.email)}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+            {report.title}
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            {report.supersedes_report_id ? (
+              <Badge variant="outline">{t("Correction")}</Badge>
+            ) : null}
+            <Badge className={STATUS_TONE[report.work_status]}>
+              {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
+            </Badge>
+          </span>
+        </div>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          <span className="font-medium text-foreground/80">{displayName(person, t)}</span> ·{" "}
+          {reportStamp(report)} · {reportMeta(report, projectName, t)}
+        </p>
+        <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+          {report.content}
+        </p>
+        {report.image_urls?.length ? (
+          <div className="mt-2">
+            <WorkLogImages images={report.image_urls} compact onOpen={onOpenImage} />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function Review() {
   const { profile, roles, permissions, loading } = useMe();
   const { t } = useLanguage();
@@ -62,39 +136,43 @@ function Review() {
   const [userId, setUserId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [type, setType] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const reports = useVisibleReports({ from, to, userId, projectId, type });
+  const all = useMemo(() => reports.data ?? [], [reports.data]);
+  const current = useMemo(() => currentReports(all), [all]);
+  const selected = selectedId ? (all.find((report) => report.id === selectedId) ?? null) : null;
+  const history = useMemo(() => (selected ? historyOf(selected, all) : []), [selected, all]);
 
-  const personName = (id: string) => {
-    const p = (people.data ?? []).find((x) => x.id === id);
-    return p?.full_name || p?.email || "Unknown";
-  };
+  const personById = (id: string) => (people.data ?? []).find((person) => person.id === id);
   const projectName = (id: string | null) =>
     id ? ((projects.data ?? []).find((p) => p.id === id)?.name ?? "—") : "—";
 
   const byPerson = useMemo(() => {
     const map = new Map<string, { entries: number; hours: number }>();
-    for (const r of reports.data ?? []) {
+    for (const r of current) {
       const cur = map.get(r.user_id) ?? { entries: 0, hours: 0 };
       cur.entries += 1;
       cur.hours += Number(r.hours_spent);
       map.set(r.user_id, cur);
     }
     return [...map.entries()].sort((a, b) => b[1].hours - a[1].hours);
-  }, [reports.data]);
+  }, [current]);
 
-  const totalHours = (reports.data ?? []).reduce((s, r) => s + Number(r.hours_spent), 0);
+  const totalHours = current.reduce((s, r) => s + Number(r.hours_spent), 0);
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Checking staff activity access…</p>;
+    return <p className="text-sm text-muted-foreground">{t("Checking staff activity access…")}</p>;
   }
 
   if (!allowed) {
     return (
       <div className="logbook-card p-10 text-center">
         <p className="text-sm text-muted-foreground">
-          Your role does not have the View staff activity capability. An admin can enable it in the
-          capability matrix.
+          {t(
+            "Your role does not have the View staff activity capability. An admin can enable it in the capability matrix.",
+          )}
         </p>
       </div>
     );
@@ -226,7 +304,7 @@ function Review() {
       <div className="-mr-4 mb-6 flex snap-x snap-mandatory scroll-pl-4 gap-3 overflow-x-auto pb-2 pr-4 [scrollbar-width:none] sm:mr-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 sm:pr-0 [&::-webkit-scrollbar]:hidden">
         <div className="logbook-card min-w-[50%] snap-start border-transparent bg-stat-gold p-4 shadow-none sm:min-w-0 sm:p-5">
           <p className="logbook-label">{t("Entries")}</p>
-          <p className="mt-2 text-xl font-semibold sm:text-2xl">{reports.data?.length ?? 0}</p>
+          <p className="mt-2 text-xl font-semibold sm:text-2xl">{current.length}</p>
         </div>
         <div className="logbook-card min-w-[50%] snap-start border-transparent bg-stat-teal p-4 shadow-none sm:min-w-0 sm:p-5">
           <p className="logbook-label">{t("Hours")}</p>
@@ -240,79 +318,63 @@ function Review() {
 
       {byPerson.length > 0 ? (
         <section className="mb-8">
-          <h2 className="mb-3 text-sm font-semibold">By person</h2>
+          <h2 className="mb-3 text-sm font-semibold">{t("By person")}</h2>
           <div className="logbook-card divide-y divide-border">
-            {byPerson.map(([id, s]) => (
-              <div key={id} className="flex items-center justify-between px-5 py-3 text-sm">
-                <span>{personName(id)}</span>
-                <span className="text-muted-foreground">
-                  {s.entries} entries · {s.hours.toFixed(1)}h
-                </span>
-              </div>
-            ))}
+            {byPerson.map(([id, s]) => {
+              const person = personById(id);
+              return (
+                <div key={id} className="flex items-center gap-3 px-4 py-2.5 text-sm sm:px-5">
+                  <Avatar className="size-7 border border-border">
+                    <AvatarImage src={person?.avatar_url ?? undefined} alt="" />
+                    <AvatarFallback className="text-[10px] font-semibold">
+                      {personInitials(person?.full_name, person?.email)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="min-w-0 flex-1 truncate">{displayName(person, t)}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {s.entries} {t("entries")} · {s.hours.toFixed(1)}h
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </section>
       ) : null}
 
       {reports.isLoading ? (
-        <p className="mb-4 text-sm text-muted-foreground">Loading staff activity…</p>
+        <p className="mb-4 text-sm text-muted-foreground">{t("Loading staff activity…")}</p>
       ) : null}
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold">Entries</h2>
+        <h2 className="mb-3 text-sm font-semibold">{t("Entries")}</h2>
         <div className="logbook-card divide-y divide-border">
-          {(reports.data ?? []).map((r) => (
-            <article key={r.id} className="px-5 py-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-sm font-medium">{r.title}</h3>
-                <span className="text-xs text-muted-foreground">
-                  {r.report_date}
-                  {r.report_time ? ` · ${r.report_time.slice(0, 5)}` : ""}
-                </span>
-              </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {personName(r.user_id)} · {REPORT_TYPE_LABEL[r.report_type]}
-                {r.activity_detail ? ` · ${r.activity_detail}` : ""} · {projectName(r.project_id)} ·{" "}
-                {WORK_STATUS_LABEL[r.work_status]} · {SHIFT_LABEL[r.shift]} ·{" "}
-                {Number(r.hours_spent).toFixed(1)}h
-              </p>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-                {r.content}
-              </p>
-              {r.output_quantity !== null ? (
-                <p className="mt-2 text-xs font-medium">
-                  Output: {Number(r.output_quantity).toLocaleString()} {r.output_unit}
-                </p>
-              ) : null}
-              {r.blockers ? (
-                <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-                  Blocker: {r.blockers}
-                </p>
-              ) : null}
-              {r.image_urls?.length ? (
-                <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                  {r.image_urls.map((image) => (
-                    <a
-                      key={image}
-                      href={reportImageUrl(image)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="aspect-square overflow-hidden rounded-md"
-                    >
-                      <img src={reportImageUrl(image)} alt="" className="size-full object-cover" />
-                    </a>
-                  ))}
-                </div>
-              ) : null}
-            </article>
+          {current.map((report) => (
+            <FeedRow
+              key={report.id}
+              report={report}
+              person={personById(report.user_id)}
+              projectName={projectName(report.project_id)}
+              onOpen={() => setSelectedId(report.id)}
+              onOpenImage={setLightbox}
+            />
           ))}
-          {!reports.isLoading && (reports.data ?? []).length === 0 ? (
+          {!reports.isLoading && current.length === 0 ? (
             <p className="px-5 py-10 text-center text-sm text-muted-foreground">
-              No reports match these filters.
+              {t("No reports match these filters.")}
             </p>
           ) : null}
         </div>
       </section>
+
+      <WorkLogDialog
+        report={selected}
+        history={history}
+        projectName={projectName(selected?.project_id ?? null)}
+        personName={selected ? displayName(personById(selected.user_id), t) : undefined}
+        onClose={() => setSelectedId(null)}
+        onOpenImage={setLightbox}
+      />
+      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
     </>
   );
 }
