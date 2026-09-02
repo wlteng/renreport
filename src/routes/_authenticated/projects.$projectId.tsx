@@ -757,7 +757,7 @@ function ProjectDetailPage() {
                 "Current fund equals the starting fund minus non-rejected expenses in this currency. Expenses in other currencies are listed but are not converted.",
               )}
             </p>
-            <DialogFooter className="flex-row gap-2 sm:gap-0">
+            <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="outline" className="flex-1 sm:flex-none">
                   {t("Cancel")}

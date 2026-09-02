@@ -13,6 +13,7 @@ export type AppLanguage = "en" | "zh";
 const LANGUAGE_STORAGE_KEY = "renreport.locale.v1";
 
 const ZH_TRANSLATIONS: Record<string, string> = {
+  "Ren Report": "任报告",
   Home: "首页",
   "Staff activity": "员工动态",
   "Filter staff activity": "筛选员工动态",
@@ -69,6 +70,8 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   English: "English",
   Chinese: "中文",
   "Sign out": "退出登录",
+  "An app update is ready.": "应用有新版本可用。",
+  Update: "更新",
   Admin: "管理员",
   Boss: "负责人",
   Manager: "经理",
@@ -263,13 +266,29 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "Loading work log…": "正在加载工作日志……",
   "Existing images": "已有图片",
   "Sign in": "登录",
+  "Reset password": "重置密码",
+  "Choose a new password": "设置新密码",
+  "Enter your account email to receive a recovery link. Username-only staff accounts must contact an administrator.":
+    "输入账户邮箱以接收恢复链接。仅有用户名的员工账户需联系管理员。",
+  "Use at least 8 characters for your new password.": "新密码至少需要 8 个字符。",
+  "New password": "新密码",
+  "Confirm new password": "确认新密码",
+  "Forgot password?": "忘记密码？",
+  "Back to sign in": "返回登录",
+  "Send recovery link": "发送恢复链接",
+  "Update password": "更新密码",
+  "Enter your account email address.": "请输入账户邮箱地址。",
+  "Password reset link sent.": "密码重置链接已发送。",
+  "Password must be at least 8 characters.": "密码至少需要 8 个字符。",
+  "Passwords do not match.": "两次输入的密码不一致。",
+  "Password updated. Sign in with your new password.": "密码已更新，请使用新密码登录。",
   "Get started": "开始使用",
   "I already have an account": "我已有账户",
   "Gold mining operations log": "金矿运营工作日志",
   "Know what is happening across every mine project, shift and expense.":
     "随时掌握每个矿区项目、班次和费用的进展。",
   "Ren Report records the work, production output, blockers, project costs and staff administration behind the gold mines your team operates and invests in.":
-    "Ren Report 记录团队运营和投资的金矿背后的工作、产量、阻碍事项、项目成本和员工管理。",
+    "任报告记录团队运营和投资的金矿背后的工作、产量、阻碍事项、项目成本和员工管理。",
   "Staff write": "员工记录",
   "Submit mine project, shift, activity, hours, output, blockers and supporting evidence.":
     "提交矿区项目、班次、活动、工时、产量、阻碍事项和佐证材料。",

@@ -120,6 +120,8 @@
 
   html {
     background-color: var(--color-background);
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   body {
@@ -128,6 +130,8 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   /* Prevent iOS auto-zoom on input focus */
@@ -170,4 +174,12 @@
     var(--color-border) 27px,
     var(--color-border) 28px
   );
+}
+
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
 }

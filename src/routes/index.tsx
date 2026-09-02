@@ -46,10 +46,10 @@ function Landing() {
   const { t } = useLanguage();
   return (
     <div className="min-h-screen bg-background">
-      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 py-5">
+      <header className="mx-auto flex w-full max-w-5xl items-center justify-between pb-5 pl-[max(1.25rem,env(safe-area-inset-left,0px))] pr-[max(1.25rem,env(safe-area-inset-right,0px))] pt-[max(1.25rem,env(safe-area-inset-top,0px))]">
         <span className="flex items-center gap-2 text-sm font-semibold tracking-tight">
           <img src="/icons/icon-192.png" alt="" className="size-8 rounded-lg" />
-          Ren Report
+          {t("Ren Report")}
         </span>
         <div className="flex items-center gap-2">
           <LanguageToggle />
@@ -59,7 +59,7 @@ function Landing() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl px-5 pb-20">
+      <main className="mx-auto w-full max-w-5xl pb-[max(5rem,env(safe-area-inset-bottom,0px))] pl-[max(1.25rem,env(safe-area-inset-left,0px))] pr-[max(1.25rem,env(safe-area-inset-right,0px))]">
         <section className="py-14 sm:py-20">
           <p className="logbook-label">{t("Gold mining operations log")}</p>
           <h1 className="mt-3 max-w-2xl text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">

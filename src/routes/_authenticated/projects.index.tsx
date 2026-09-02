@@ -392,7 +392,7 @@ function ProjectsPage() {
                 onChange={(event) => setDescription(event.target.value)}
               />
             </Field>
-            <DialogFooter className="flex-row gap-2 sm:gap-0">
+            <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="outline" className="flex-1 sm:flex-none">
                   {t("Cancel")}
