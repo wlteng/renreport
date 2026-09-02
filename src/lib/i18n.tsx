@@ -220,6 +220,8 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "Not reported today": "今日未报告",
   "Your recent project work": "您最近的项目工作",
   "View all": "查看全部",
+  "Show more": "显示更多",
+  "Show all": "显示全部",
   "Full name": "姓名",
   "Job title": "职位",
   Phone: "电话",

@@ -241,7 +241,7 @@ function SubmitWork() {
       toast.success("Work log submitted");
       queryClient.invalidateQueries({ queryKey: ["my-reports"] });
       queryClient.invalidateQueries({ queryKey: ["visible-reports"] });
-      navigate({ to: "/reports" });
+      navigate({ to: "/dashboard" });
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : "Could not submit work"),
@@ -518,7 +518,7 @@ function SubmitWork() {
           </section>
         ) : null}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => navigate({ to: "/reports" })}>
+          <Button type="button" variant="outline" onClick={() => navigate({ to: "/dashboard" })}>
             {t("Cancel")}
           </Button>
           <Button type="submit" disabled={save.isPending}>

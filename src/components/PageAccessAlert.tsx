@@ -40,9 +40,6 @@ function pageScope(pathname: string): AccessRule[] {
       },
     ];
   }
-  if (pathname === "/reports") {
-    return [{ roles: ROLE_ORDER, detail: "See and manage only their own work logs." }];
-  }
   if (pathname === "/review") {
     return [
       {

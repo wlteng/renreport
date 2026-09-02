@@ -2,7 +2,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   BarChart3,
-  FileText,
   Home,
   Languages,
   LogOut,
@@ -91,11 +90,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const { language, setLanguage, t } = useLanguage();
   const items = navItemsFor(roles, permissions, t);
-  const mobileItems: NavItem[] = [
-    { to: "/dashboard", label: t("Home"), icon: Home },
-    { to: "/reports", label: t("My work"), icon: FileText },
-    ...items.filter((item) => item.to !== "/dashboard"),
-  ];
 
   async function signOut() {
     await queryClient.cancelQueries();
@@ -180,23 +174,19 @@ export function AppShell({ children }: { children: ReactNode }) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {hasCapability(permissions, "submit_work", roles) ? (
-              <DropdownMenuItem
-                asChild
-                className="bg-primary text-primary-foreground focus:bg-primary/90 focus:text-primary-foreground"
-              >
-                <Link to="/reports/new">
-                  <PenLine />
-                  {t("Submit work")}
-                </Link>
-              </DropdownMenuItem>
+              <>
+                <DropdownMenuItem
+                  asChild
+                  className="bg-primary text-primary-foreground focus:bg-primary/90 focus:text-primary-foreground"
+                >
+                  <Link to="/reports/new">
+                    <PenLine />
+                    {t("Submit work")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
             ) : null}
-            <DropdownMenuItem asChild>
-              <Link to="/reports">
-                <FileText />
-                {t("My work")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             {roles.includes("admin") ? (
               <DropdownMenuItem asChild>
                 <Link to="/admin" search={{ section: "people" }}>
@@ -250,7 +240,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-1 overflow-x-auto border-t border-border bg-card px-1 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pt-2 lg:hidden">
-        {mobileItems.map((item) => (
+        {items.map((item) => (
           <Link
             key={item.to}
             to={item.to}
