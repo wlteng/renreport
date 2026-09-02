@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Filter } from "lucide-react";
 import { useMemo, useState } from "react";
+import { z } from "zod";
 
 import { PageHeader } from "@/components/AppShell";
 import { ImageLightbox, WorkLogDialog, WorkLogImages } from "@/components/WorkLog";
@@ -39,7 +40,23 @@ import {
   STATUS_TONE,
 } from "@/lib/workLogs";
 
+// Filters live in the URL so a filtered view can be bookmarked or shared.
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .optional()
+  .catch(undefined);
+const reviewSearchSchema = z.object({
+  from: isoDate,
+  to: isoDate,
+  person: z.string().uuid().optional().catch(undefined),
+  project: z.string().uuid().optional().catch(undefined),
+  type: z.string().max(40).optional().catch(undefined),
+});
+type ReviewSearch = z.infer<typeof reviewSearchSchema>;
+
 export const Route = createFileRoute("/_authenticated/review")({
+  validateSearch: (search: Record<string, unknown>) => reviewSearchSchema.parse(search),
   head: () => ({
     meta: [
       { title: "Staff activity — Ren Report" },
@@ -66,12 +83,14 @@ function displayName(person: PersonRow | undefined, t: (text: string) => string)
 
 function FeedRow({
   report,
+  replaces,
   person,
   projectName,
   onOpen,
   onOpenImage,
 }: {
   report: ReportRow;
+  replaces: ReportRow | undefined;
   person: PersonRow | undefined;
   projectName: string;
   onOpen: () => void;
@@ -110,6 +129,11 @@ function FeedRow({
           <span className="font-medium text-foreground/80">{displayName(person, t)}</span> ·{" "}
           {reportStamp(report)} · {reportMeta(report, projectName, t)}
         </p>
+        {replaces ? (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {t("Replaces")}: {reportStamp(replaces)} · {replaces.title}
+          </p>
+        ) : null}
         <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
           {report.content}
         </p>
@@ -130,19 +154,26 @@ function Review() {
   const projects = useProjects();
   const allowed = !!profile?.is_active && hasCapability(permissions, "view_staff_feed", roles);
 
+  const search = Route.useSearch();
+  const navigate = useNavigate();
+  const from = search.from ?? isoDaysAgo(13);
+  const to = search.to ?? todayForDateInput();
+  const userId = search.person ?? "";
+  const projectId = search.project ?? "";
+  const type = search.type ?? "";
+  const setFilters = (patch: Partial<ReviewSearch>) =>
+    navigate({ to: "/review", search: { ...search, ...patch }, replace: true });
+  const resetFilters = () => navigate({ to: "/review", search: {}, replace: true });
+
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [from, setFrom] = useState(isoDaysAgo(13));
-  const [to, setTo] = useState(todayForDateInput);
-  const [userId, setUserId] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [type, setType] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
 
   const reports = useVisibleReports({ from, to, userId, projectId, type });
   const all = useMemo(() => reports.data ?? [], [reports.data]);
+  const byId = useMemo(() => new Map(all.map((report) => [report.id, report])), [all]);
   const current = useMemo(() => currentReports(all), [all]);
-  const selected = selectedId ? (all.find((report) => report.id === selectedId) ?? null) : null;
+  const selected = selectedId ? (byId.get(selectedId) ?? null) : null;
   const history = useMemo(() => (selected ? historyOf(selected, all) : []), [selected, all]);
 
   const personById = (id: string) => (people.data ?? []).find((person) => person.id === id);
@@ -211,8 +242,8 @@ function Review() {
                 type="date"
                 value={from}
                 onChange={(event) => {
-                  setFrom(event.target.value);
-                  if (to && event.target.value > to) setTo(event.target.value);
+                  const value = event.target.value;
+                  void setFilters({ from: value, ...(to && value > to ? { to: value } : {}) });
                 }}
               />
             </div>
@@ -223,8 +254,8 @@ function Review() {
                 type="date"
                 value={to}
                 onChange={(event) => {
-                  setTo(event.target.value);
-                  if (from && event.target.value < from) setFrom(event.target.value);
+                  const value = event.target.value;
+                  void setFilters({ to: value, ...(from && value < from ? { from: value } : {}) });
                 }}
               />
             </div>
@@ -234,7 +265,7 @@ function Review() {
                 id="person"
                 className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
                 value={userId}
-                onChange={(e) => setUserId(e.target.value)}
+                onChange={(e) => void setFilters({ person: e.target.value || undefined })}
               >
                 <option value="">{t("Everyone")}</option>
                 {(people.data ?? []).map((p) => (
@@ -250,7 +281,7 @@ function Review() {
                 id="proj"
                 className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
                 value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
+                onChange={(e) => void setFilters({ project: e.target.value || undefined })}
               >
                 <option value="">{t("All projects")}</option>
                 {(projects.data ?? []).map((p) => (
@@ -266,7 +297,7 @@ function Review() {
                 id="wt"
                 className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
                 value={type}
-                onChange={(e) => setType(e.target.value)}
+                onChange={(e) => void setFilters({ type: e.target.value || undefined })}
               >
                 <option value="">{t("All types")}</option>
                 {REPORT_TYPES.map((reportType) => (
@@ -282,13 +313,7 @@ function Review() {
               type="button"
               variant="outline"
               className="flex-1 sm:flex-none"
-              onClick={() => {
-                setFrom(isoDaysAgo(13));
-                setTo(todayForDateInput());
-                setUserId("");
-                setProjectId("");
-                setType("");
-              }}
+              onClick={() => void resetFilters()}
             >
               {t("Reset")}
             </Button>
@@ -352,6 +377,9 @@ function Review() {
             <FeedRow
               key={report.id}
               report={report}
+              replaces={
+                report.supersedes_report_id ? byId.get(report.supersedes_report_id) : undefined
+              }
               person={personById(report.user_id)}
               projectName={projectName(report.project_id)}
               onOpen={() => setSelectedId(report.id)}

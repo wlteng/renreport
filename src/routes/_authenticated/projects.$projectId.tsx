@@ -23,6 +23,7 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/AppShell";
 import { ExpenseDialog } from "@/components/ExpenseDialog";
+import { ImageLightbox, WorkLogDialog, WorkLogImages } from "@/components/WorkLog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -34,6 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,7 +70,7 @@ import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { todayForDateInput } from "@/lib/dates";
 import { deleteRecord } from "@/lib/deleteRecord";
 import { useLanguage } from "@/lib/i18n";
-import { reportImageUrl } from "@/lib/reportImages";
+import { personInitials } from "@/lib/people";
 import {
   LICENSE_STATUS_LABEL,
   MINING_METHOD_LABEL,
@@ -78,8 +80,16 @@ import {
   PROJECT_LOCATION_LABEL,
   PROJECT_URL_LABEL,
 } from "@/lib/projects";
-import { hasCapability, REPORT_TYPE_LABEL } from "@/lib/roles";
+import { hasCapability, WORK_STATUS_LABEL } from "@/lib/roles";
 import { staffLoginLabel } from "@/lib/staffAuth";
+import {
+  currentReports,
+  historyOf,
+  reportMeta,
+  reportStamp,
+  rowKeyHandler,
+  STATUS_TONE,
+} from "@/lib/workLogs";
 import {
   firstValidationError,
   projectMemberSchema,
@@ -155,6 +165,8 @@ function ProjectDetailPage() {
   const expenses = useExpenses({ projectId });
   const queryClient = useQueryClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const [settingsName, setSettingsName] = useState("");
   const [settingsCategory, setSettingsCategory] = useState("mine");
   const [settingsProjectCode, setSettingsProjectCode] = useState("");
@@ -222,13 +234,28 @@ function ProjectDetailPage() {
       .slice(0, 20);
   }, [assignedUserIds, people.data, staffSearch]);
   const totalHours = useMemo(
-    () => (reports.data ?? []).reduce((sum, report) => sum + Number(report.hours_spent), 0),
+    () =>
+      currentReports(reports.data ?? []).reduce(
+        (sum, report) => sum + Number(report.hours_spent),
+        0,
+      ),
     [reports.data],
+  );
+  const selectedReport = useMemo(
+    () =>
+      selectedReportId
+        ? ((reports.data ?? []).find((report) => report.id === selectedReportId) ?? null)
+        : null,
+    [reports.data, selectedReportId],
+  );
+  const selectedHistory = useMemo(
+    () => (selectedReport ? historyOf(selectedReport, reports.data ?? []) : []),
+    [reports.data, selectedReport],
   );
   const activityItems = useMemo(
     () =>
       [
-        ...(reports.data ?? []).map((report) => ({
+        ...currentReports(reports.data ?? []).map((report) => ({
           kind: "report" as const,
           id: report.id,
           occurredAt: `${report.report_date}T${report.report_time || "00:00"}`,
@@ -624,6 +651,20 @@ function ProjectDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <WorkLogDialog
+        report={selectedReport}
+        history={selectedHistory}
+        projectName={project.name}
+        personName={
+          selectedReport
+            ? peopleById.get(selectedReport.user_id)?.full_name || t("Unknown user")
+            : undefined
+        }
+        onClose={() => setSelectedReportId(null)}
+        onOpenImage={setLightbox}
+      />
+      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
 
       <Dialog open={settingsOpen && canManageProject} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
@@ -1530,67 +1571,52 @@ function ProjectDetailPage() {
 
                 const report = item.report;
                 const author = peopleById.get(report.user_id);
+                const open = () => setSelectedReportId(report.id);
                 return (
-                  <article key={`report-${item.id}`} className="py-5 first:pt-0 last:pb-0">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h2 className="text-sm font-semibold">{report.title}</h2>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {formatDate(report.report_date)}
-                          {report.report_time ? ` · ${report.report_time.slice(0, 5)}` : ""} ·{" "}
-                          {author?.full_name || "Unknown staff"} · {report.shift} shift
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type)}
-                          {report.activity_detail ? ` · ${report.activity_detail}` : ""}
-                        </p>
+                  <div
+                    key={`report-${item.id}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={open}
+                    onKeyDown={rowKeyHandler(open)}
+                    className="flex cursor-pointer items-start gap-3 py-4 text-left first:pt-0 last:pb-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Avatar className="mt-0.5 size-9 shrink-0 border border-border">
+                      <AvatarImage src={author?.avatar_url ?? undefined} alt="" />
+                      <AvatarFallback className="text-xs font-semibold">
+                        {personInitials(author?.full_name, author?.email)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                          {report.title}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {report.supersedes_report_id ? (
+                            <Badge variant="outline">{t("Correction")}</Badge>
+                          ) : null}
+                          <Badge className={STATUS_TONE[report.work_status]}>
+                            {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
+                          </Badge>
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">
-                          {t(STATUS_LABEL[report.work_status] ?? report.work_status)}
-                        </Badge>
-                        <span className="text-sm font-medium">{Number(report.hours_spent)}h</span>
-                      </div>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground/80">
+                          {author?.full_name || author?.email || t("Unknown user")}
+                        </span>{" "}
+                        · {reportStamp(report)} · {reportMeta(report, project.name, t)}
+                      </p>
+                      <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                        {report.content}
+                      </p>
+                      {report.image_urls?.length ? (
+                        <div className="mt-2">
+                          <WorkLogImages images={report.image_urls} compact onOpen={setLightbox} />
+                        </div>
+                      ) : null}
                     </div>
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                      {report.content}
-                    </p>
-                    {report.output_quantity !== null ? (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {t("Output")}: {Number(report.output_quantity).toLocaleString()}{" "}
-                        {report.output_unit}
-                      </p>
-                    ) : null}
-                    {report.blockers ? (
-                      <p className="mt-2 text-xs text-destructive">
-                        {t("Blockers")}: {report.blockers}
-                      </p>
-                    ) : null}
-                    {report.links ? (
-                      <p className="mt-2 break-all text-xs text-muted-foreground">
-                        {t("Links")}: {report.links}
-                      </p>
-                    ) : null}
-                    {report.image_urls?.length ? (
-                      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                        {report.image_urls.map((image, index) => (
-                          <a
-                            key={`${image}-${index}`}
-                            href={reportImageUrl(image)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="aspect-square overflow-hidden rounded-md"
-                          >
-                            <img
-                              src={reportImageUrl(image)}
-                              alt={`${t("Image")} ${index + 1}`}
-                              className="size-full object-cover"
-                            />
-                          </a>
-                        ))}
-                      </div>
-                    ) : null}
-                  </article>
+                  </div>
                 );
               })}
               {!reports.isLoading && !gitEvents.isLoading && activityItems.length === 0 ? (

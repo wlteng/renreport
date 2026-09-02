@@ -30,7 +30,7 @@ export type PersonRow = Pick<
 >;
 export type StaffDirectoryRow = Pick<
   Tables<"profiles">,
-  "id" | "email" | "full_name" | "job_title" | "is_active"
+  "id" | "email" | "full_name" | "avatar_url" | "job_title" | "is_active"
 >;
 
 export function useDepartments() {
@@ -173,7 +173,7 @@ export function useStaffDirectory() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, email, full_name, job_title, is_active")
+        .select("id, email, full_name, avatar_url, job_title, is_active")
         .order("full_name", { nullsFirst: false });
       if (error) throw error;
       return data ?? [];

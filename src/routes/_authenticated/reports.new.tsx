@@ -15,6 +15,7 @@ import { useMe } from "@/hooks/useSession";
 import { useActiveProjects, useProjectMembers, useReport } from "@/hooks/useData";
 import { nowForTimeInput, todayForDateInput } from "@/lib/dates";
 import { useLanguage } from "@/lib/i18n";
+import { compressImage } from "@/lib/images";
 import {
   removeReportImages,
   reportImageUrl,
@@ -192,7 +193,7 @@ function SubmitWork() {
     setExistingImages(report.image_urls ?? []);
   }, [mode, source.data]);
 
-  function addImages(files: FileList | File[]) {
+  async function addImages(files: FileList | File[]) {
     const candidates = Array.from(files);
     const valid = candidates.filter(
       (file) => REPORT_IMAGE_TYPES.has(file.type) && file.size <= REPORT_IMAGE_MAX_BYTES,
@@ -200,11 +201,15 @@ function SubmitWork() {
     if (valid.length !== candidates.length) toast.error(t("Use JPG, PNG or WebP under 5 MB"));
     const available = REPORT_IMAGE_LIMIT - images.length - existingImages.length;
     if (valid.length > available) toast.error(t("You can add up to 5 images"));
-    const additions = valid.slice(0, available).map((file) => {
-      const preview = URL.createObjectURL(file);
-      previewUrls.current.add(preview);
-      return { file, preview, id: crypto.randomUUID() };
-    });
+    // Phone photos are downscaled in the browser so uploads and the feed stay fast.
+    const additions = await Promise.all(
+      valid.slice(0, available).map(async (original) => {
+        const file = await compressImage(original);
+        const preview = URL.createObjectURL(file);
+        previewUrls.current.add(preview);
+        return { file, preview, id: crypto.randomUUID() };
+      }),
+    );
     setImages((current) => [...current, ...additions]);
   }
 
@@ -555,7 +560,7 @@ function SubmitWork() {
           onDrop={(event) => {
             event.preventDefault();
             setIsDraggingImage(false);
-            addImages(event.dataTransfer.files);
+            void addImages(event.dataTransfer.files);
           }}
         >
           <label
@@ -575,7 +580,7 @@ function SubmitWork() {
             multiple
             className="sr-only"
             onChange={(event) => {
-              if (event.target.files) addImages(event.target.files);
+              if (event.target.files) void addImages(event.target.files);
               event.target.value = "";
             }}
           />
