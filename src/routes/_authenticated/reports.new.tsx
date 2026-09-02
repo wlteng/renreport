@@ -262,7 +262,19 @@ function SubmitWork() {
           if (uploadError) throw uploadError;
           imagePaths.push(path);
         }
-        const allImages = [...existingImages, ...imagePaths];
+        if (mode === "correct") {
+          // Each work log owns its files, so deleting one never breaks another.
+          for (const path of existingImages) {
+            const extension = path.split(".").pop() ?? "jpg";
+            const copy = `${user.id}/${reportId}/${crypto.randomUUID()}.${extension}`;
+            const { error: copyError } = await supabase.storage
+              .from(REPORT_IMAGE_BUCKET)
+              .copy(path, copy);
+            if (copyError) throw copyError;
+            imagePaths.push(copy);
+          }
+        }
+        const allImages = mode === "correct" ? imagePaths : [...existingImages, ...imagePaths];
         const record = {
           ...input,
           activity_detail: input.activity_detail ?? null,

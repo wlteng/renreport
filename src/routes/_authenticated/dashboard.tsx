@@ -25,11 +25,11 @@ import {
   type ReportRow,
 } from "@/hooks/useData";
 import { useMe } from "@/hooks/useSession";
-import { supabase } from "@/integrations/supabase/client";
 import { todayForDateInput } from "@/lib/dates";
+import { deleteRecord } from "@/lib/deleteRecord";
 import { useLanguage, type AppLanguage } from "@/lib/i18n";
 import { isWithinEditWindow } from "@/lib/reportEdits";
-import { removeReportImages, reportImageUrl } from "@/lib/reportImages";
+import { reportImageUrl } from "@/lib/reportImages";
 import { hasCapability, REPORT_TYPE_LABEL, SHIFT_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
@@ -458,15 +458,8 @@ function MyWorkSection({
     id ? (projects.data?.find((project) => project.id === id)?.name ?? "—") : "—";
 
   const remove = useMutation({
-    mutationFn: async (report: ReportRow) => {
-      const { error } = await supabase.from("reports").delete().eq("id", report.id);
-      if (error) throw error;
-      // Only files stored under this log are removed; a correction may share older ones.
-      const ownFolder = `${report.user_id}/${report.id}/`;
-      await removeReportImages(
-        (report.image_urls ?? []).filter((path) => path.startsWith(ownFolder)),
-      );
-    },
+    // The edge function deletes the row and every photo stored for it.
+    mutationFn: (report: ReportRow) => deleteRecord("report", report.id),
     onSuccess: () => {
       toast.success(t("Work log deleted"));
       setSelectedId(null);
@@ -474,7 +467,7 @@ function MyWorkSection({
       queryClient.invalidateQueries({ queryKey: ["visible-reports"] });
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : "Could not delete work log"),
+      toast.error(error instanceof Error ? error.message : t("Could not delete work log")),
   });
 
   return (

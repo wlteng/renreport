@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Banknote,
@@ -13,6 +13,7 @@ import {
   Plus,
   ReceiptText,
   Settings2,
+  Trash2,
   Trophy,
   UserPlus,
   Users,
@@ -23,6 +24,16 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/AppShell";
 import { ExpenseDialog } from "@/components/ExpenseDialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +66,7 @@ import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { todayForDateInput } from "@/lib/dates";
+import { deleteRecord } from "@/lib/deleteRecord";
 import { useLanguage } from "@/lib/i18n";
 import { reportImageUrl } from "@/lib/reportImages";
 import {
@@ -282,6 +294,20 @@ function ProjectDetailPage() {
     (roles.includes("admin") || hasCapability(permissions, "manage_projects", roles));
   const canManageStaff =
     !!profile?.is_active && !!user && (project?.owner_id === user.id || roles.includes("admin"));
+  const canDeleteProject = !!profile?.is_active && roles.includes("admin");
+  const navigate = useNavigate();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const deleteProject = useMutation({
+    mutationFn: () => deleteRecord("project", projectId),
+    onSuccess: () => {
+      toast.success(t("Project deleted"));
+      setDeleteOpen(false);
+      queryClient.invalidateQueries();
+      navigate({ to: "/projects", replace: true });
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : t("Could not delete project")),
+  });
   const canViewAllExpenses = hasCapability(permissions, "view_expenses", roles);
   const canSubmitExpenses =
     !!profile?.is_active && hasCapability(permissions, "submit_expenses", roles);
@@ -553,12 +579,51 @@ function ProjectDetailPage() {
                 {t("Edit project")}
               </Button>
             ) : null}
+            {canDeleteProject ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 />
+                {t("Delete project")}
+              </Button>
+            ) : null}
             <Badge variant={project.status === "active" ? "default" : "secondary"}>
               {t(STATUS_LABEL[project.status] ?? project.status)}
             </Badge>
           </div>
         }
       />
+
+      <AlertDialog open={deleteOpen && canDeleteProject} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("Delete this project?")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="block font-medium text-foreground">{project.name}</span>
+              {t(
+                "This permanently removes the project together with its work logs and photos, expenses, tasks, milestones, staff assignments and GitHub activity. This cannot be undone.",
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteProject.isPending}>{t("Cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteProject.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                deleteProject.mutate();
+              }}
+            >
+              {deleteProject.isPending ? t("Deleting…") : t("Delete project")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={settingsOpen && canManageProject} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
