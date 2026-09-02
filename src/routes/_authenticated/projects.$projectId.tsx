@@ -6,7 +6,9 @@ import {
   CheckCircle2,
   Circle,
   Clock3,
+  ExternalLink,
   Flag,
+  GitCommitHorizontal,
   ListTodo,
   Plus,
   ReceiptText,
@@ -42,6 +44,7 @@ import {
   useDepartments,
   useExpenses,
   useProjectMilestones,
+  useProjectGitEvents,
   useProjectMembers,
   useProjectTasks,
   useProjects,
@@ -150,6 +153,7 @@ function ProjectDetailPage() {
   const [settingsReserveKg, setSettingsReserveKg] = useState("");
   const [settingsAreaKm2, setSettingsAreaKm2] = useState("");
   const [settingsUrl, setSettingsUrl] = useState("");
+  const [settingsRepositoryUrl, setSettingsRepositoryUrl] = useState("");
   const [settingsDepartmentId, setSettingsDepartmentId] = useState("");
   const [settingsDescription, setSettingsDescription] = useState("");
   const [settingsFund, setSettingsFund] = useState("");
@@ -173,6 +177,11 @@ function ProjectDetailPage() {
     (membership) => membership.project_id === projectId && membership.user_id === user?.id,
   );
   const project = rawProject && (!staffRestricted || staffAssigned) ? rawProject : undefined;
+  const gitEvents = useProjectGitEvents(
+    projectId,
+    project?.repository_url,
+    project?.category === "website",
+  );
   const peopleById = useMemo(
     () => new Map((people.data ?? []).map((person) => [person.id, person])),
     [people.data],
@@ -203,6 +212,26 @@ function ProjectDetailPage() {
   const totalHours = useMemo(
     () => (reports.data ?? []).reduce((sum, report) => sum + Number(report.hours_spent), 0),
     [reports.data],
+  );
+  const activityItems = useMemo(
+    () =>
+      [
+        ...(reports.data ?? []).map((report) => ({
+          kind: "report" as const,
+          id: report.id,
+          occurredAt: `${report.report_date}T${report.report_time || "00:00"}`,
+          report,
+        })),
+        ...(gitEvents.data?.events ?? []).map((event) => ({
+          kind: "git" as const,
+          id: event.id,
+          occurredAt: event.occurred_at,
+          event,
+        })),
+      ].sort(
+        (left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime(),
+      ),
+    [gitEvents.data?.events, reports.data],
   );
   const completedTaskCount = useMemo(
     () => (tasks.data ?? []).filter((task) => task.is_completed).length,
@@ -406,6 +435,7 @@ function ProjectDetailPage() {
         reserve_kg: settingsReserveKg,
         area_km2: settingsAreaKm2,
         url: settingsUrl,
+        repository_url: settingsRepositoryUrl,
         department_id: settingsDepartmentId,
         description: settingsDescription,
         fund_amount: settingsFund,
@@ -426,6 +456,7 @@ function ProjectDetailPage() {
           reserve_kg: input.category === "mine" ? (input.reserve_kg ?? null) : null,
           area_km2: input.category === "mine" ? (input.area_km2 ?? null) : null,
           url: PROJECT_URL_LABEL[input.category] ? (input.url ?? null) : null,
+          repository_url: input.category === "website" ? (input.repository_url ?? null) : null,
           department_id: input.department_id ?? null,
           description: input.description ?? null,
           fund_amount: input.fund_amount ?? null,
@@ -455,6 +486,7 @@ function ProjectDetailPage() {
     setSettingsReserveKg(project.reserve_kg === null ? "" : String(project.reserve_kg ?? ""));
     setSettingsAreaKm2(project.area_km2 === null ? "" : String(project.area_km2 ?? ""));
     setSettingsUrl(project.url ?? "");
+    setSettingsRepositoryUrl(project.repository_url ?? "");
     setSettingsDepartmentId(project.department_id ?? "");
     setSettingsDescription(project.description ?? "");
     setSettingsFund(project.fund_amount === null ? "" : String(project.fund_amount ?? ""));
@@ -652,6 +684,23 @@ function ProjectDetailPage() {
                     placeholder="https://example.com"
                     onChange={(event) => setSettingsUrl(event.target.value)}
                   />
+                </Field>
+              ) : null}
+              {settingsCategory === "website" ? (
+                <Field label="Git repository URL" id="settings-repository-url">
+                  <Input
+                    id="settings-repository-url"
+                    type="url"
+                    inputMode="url"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    value={settingsRepositoryUrl}
+                    placeholder="https://github.com/owner/repository"
+                    onChange={(event) => setSettingsRepositoryUrl(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("Public GitHub repositories only. Commits appear in project Activity.")}
+                  </p>
                 </Field>
               ) : null}
               <Field label="Department" id="settings-department">
@@ -962,7 +1011,7 @@ function ProjectDetailPage() {
             {t("Staff")} ({assignedPeople.length})
           </TabsTrigger>
           <TabsTrigger value="activity" className="shrink-0">
-            {t("Activity")} ({reports.data?.length ?? 0})
+            {t("Activity")} ({activityItems.length})
           </TabsTrigger>
           <TabsTrigger value="expenses" className="shrink-0">
             {t("Expenses")} ({expenses.data?.length ?? 0})
@@ -1035,6 +1084,25 @@ function ProjectDetailPage() {
                           className="break-all underline underline-offset-4 hover:text-foreground"
                         >
                           {project.url}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </dd>
+                  </div>
+                ) : null}
+                {category === "website" ? (
+                  <div>
+                    <dt className="logbook-label">{t("Git repository URL")}</dt>
+                    <dd className="mt-1 text-sm text-muted-foreground">
+                      {project.repository_url ? (
+                        <a
+                          href={project.repository_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="break-all underline underline-offset-4 hover:text-foreground"
+                        >
+                          {project.repository_url}
                         </a>
                       ) : (
                         "—"
@@ -1331,19 +1399,74 @@ function ProjectDetailPage() {
         <TabsContent value="activity">
           <Card>
             <CardHeader>
-              <CardTitle>{t("Staff submission feed")}</CardTitle>
+              <CardTitle>{t("Project activity")}</CardTitle>
               <p className="text-sm text-muted-foreground">
-                {t(
-                  "Work submitted for this project and visible under your staff-activity capability.",
-                )}
+                {project.repository_url
+                  ? t("Work submissions and recent public GitHub commits, newest first.")
+                  : t("Work submitted for this project and visible to your account.")}
               </p>
             </CardHeader>
             <CardContent className="divide-y divide-border">
               {reports.error ? <InlineError message={reports.error.message} /> : null}
-              {(reports.data ?? []).map((report) => {
+              {gitEvents.error ? <InlineError message={gitEvents.error.message} /> : null}
+              {gitEvents.data?.syncError ? (
+                <InlineError message={t(gitEvents.data.syncError)} />
+              ) : null}
+              {gitEvents.isLoading ? (
+                <p className="pb-4 text-sm text-muted-foreground">
+                  {t("Refreshing GitHub activity…")}
+                </p>
+              ) : null}
+              {activityItems.map((item) => {
+                if (item.kind === "git") {
+                  const event = item.event;
+                  return (
+                    <article key={`git-${item.id}`} className="py-5 first:pt-0 last:pb-0">
+                      <div className="flex items-start gap-3">
+                        <span className="mt-0.5 rounded-full bg-stat-teal p-2 text-primary">
+                          <GitCommitHorizontal className="size-4" aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h2 className="text-sm font-semibold">{event.title}</h2>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {formatDateTime(event.occurred_at)} ·{" "}
+                                {event.author_name || "GitHub"}
+                              </p>
+                            </div>
+                            <Badge variant="outline">{t("Git commit")}</Badge>
+                          </div>
+                          {event.description ? (
+                            <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                              {event.description}
+                            </p>
+                          ) : null}
+                          {event.event_url ? (
+                            <a
+                              href={event.event_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary underline-offset-4 hover:underline"
+                            >
+                              {event.external_id.slice(0, 7)}
+                              <ExternalLink className="size-3" aria-hidden="true" />
+                            </a>
+                          ) : (
+                            <span className="mt-3 block text-xs text-muted-foreground">
+                              {event.external_id.slice(0, 7)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                }
+
+                const report = item.report;
                 const author = peopleById.get(report.user_id);
                 return (
-                  <article key={report.id} className="py-5 first:pt-0 last:pb-0">
+                  <article key={`report-${item.id}`} className="py-5 first:pt-0 last:pb-0">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h2 className="text-sm font-semibold">{report.title}</h2>
@@ -1405,9 +1528,11 @@ function ProjectDetailPage() {
                   </article>
                 );
               })}
-              {!reports.isLoading && !reports.error && (reports.data ?? []).length === 0 ? (
+              {!reports.isLoading && !gitEvents.isLoading && activityItems.length === 0 ? (
                 <p className="py-4 text-sm text-muted-foreground">
-                  {t("No staff submissions for this project.")}
+                  {project.repository_url
+                    ? t("No project activity yet.")
+                    : t("No staff submissions for this project.")}
                 </p>
               ) : null}
             </CardContent>

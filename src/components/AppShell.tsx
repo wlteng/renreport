@@ -5,7 +5,6 @@ import {
   Home,
   Languages,
   LogOut,
-  PenLine,
   Pickaxe,
   ReceiptText,
   Settings,
@@ -173,20 +172,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               </p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {hasCapability(permissions, "submit_work", roles) ? (
-              <>
-                <DropdownMenuItem
-                  asChild
-                  className="bg-primary text-primary-foreground focus:bg-primary/90 focus:text-primary-foreground"
-                >
-                  <Link to="/reports/new">
-                    <PenLine />
-                    {t("Submit work")}
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            ) : null}
             {roles.includes("admin") ? (
               <DropdownMenuItem asChild>
                 <Link to="/admin" search={{ section: "people" }}>

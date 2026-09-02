@@ -9,3 +9,6 @@ enable_signup = false
 
 [functions.admin-create-user]
 verify_jwt = true
+
+[functions.sync-project-github]
+verify_jwt = true

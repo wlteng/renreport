@@ -163,6 +163,18 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   Website: "网站",
   "Website URL": "网站地址",
   "Web address": "网站地址",
+  "Git repository URL": "Git 代码仓库地址",
+  "Public GitHub repositories only. Commits appear in project Activity.":
+    "仅支持公开的 GitHub 代码仓库。提交记录会显示在项目动态中。",
+  "Project activity": "项目动态",
+  "Work submissions and recent public GitHub commits, newest first.":
+    "工作提交和最近的公开 GitHub 提交，按最新顺序显示。",
+  "Work submitted for this project and visible to your account.":
+    "显示该项目中您的账户可查看的工作提交。",
+  "Refreshing GitHub activity…": "正在刷新 GitHub 动态……",
+  "Could not refresh GitHub activity.": "无法刷新 GitHub 动态。",
+  "Git commit": "Git 提交",
+  "No project activity yet.": "该项目尚无动态。",
   "Owner / company": "所有者 / 公司",
   "Publisher / company": "发布方 / 公司",
   "Contractor / legal name": "承包商 / 法定名称",

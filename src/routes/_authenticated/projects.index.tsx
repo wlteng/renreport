@@ -94,6 +94,7 @@ function ProjectsPage() {
   const [reserveKg, setReserveKg] = useState("");
   const [areaKm2, setAreaKm2] = useState("");
   const [projectUrl, setProjectUrl] = useState("");
+  const [repositoryUrl, setRepositoryUrl] = useState("");
   const [description, setDescription] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [fundAmount, setFundAmount] = useState("");
@@ -127,6 +128,7 @@ function ProjectsPage() {
         reserve_kg: reserveKg,
         area_km2: areaKm2,
         url: projectUrl,
+        repository_url: repositoryUrl,
         department_id: departmentId,
         description,
         fund_amount: fundAmount,
@@ -146,6 +148,7 @@ function ProjectsPage() {
         reserve_kg: input.category === "mine" ? (input.reserve_kg ?? null) : null,
         area_km2: input.category === "mine" ? (input.area_km2 ?? null) : null,
         url: PROJECT_URL_LABEL[input.category] ? (input.url ?? null) : null,
+        repository_url: input.category === "website" ? (input.repository_url ?? null) : null,
         department_id: input.department_id ?? null,
         description: input.description ?? null,
         fund_amount: input.fund_amount ?? null,
@@ -165,6 +168,7 @@ function ProjectsPage() {
       setReserveKg("");
       setAreaKm2("");
       setProjectUrl("");
+      setRepositoryUrl("");
       setDescription("");
       setDepartmentId("");
       setFundAmount("");
@@ -320,6 +324,23 @@ function ProjectsPage() {
                     placeholder="https://example.com"
                     onChange={(event) => setProjectUrl(event.target.value)}
                   />
+                </Field>
+              ) : null}
+              {category === "website" ? (
+                <Field label="Git repository URL" id="prepository-url">
+                  <Input
+                    id="prepository-url"
+                    type="url"
+                    inputMode="url"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    value={repositoryUrl}
+                    placeholder="https://github.com/owner/repository"
+                    onChange={(event) => setRepositoryUrl(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("Public GitHub repositories only. Commits appear in project Activity.")}
+                  </p>
                 </Field>
               ) : null}
               <Field label="Department" id="pdept">

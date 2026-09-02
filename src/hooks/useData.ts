@@ -15,6 +15,7 @@ export type AuditLogRow = Tables<"admin_audit_log">;
 export type ProjectMemberRow = Tables<"project_members">;
 export type ProjectTaskRow = Tables<"project_tasks">;
 export type ProjectMilestoneRow = Tables<"project_milestones">;
+export type ProjectGitEventRow = Tables<"project_git_events">;
 
 export type PersonRow = Pick<
   Tables<"profiles">,
@@ -104,6 +105,36 @@ export function useProjectMilestones(projectId: string) {
         .order("created_at");
       if (error) throw error;
       return data ?? [];
+    },
+  });
+}
+
+export function useProjectGitEvents(
+  projectId: string,
+  repositoryUrl: string | null | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["project-git-events", projectId, repositoryUrl],
+    enabled: enabled && !!repositoryUrl,
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: "always",
+    retry: false,
+    queryFn: async () => {
+      const sync = await supabase.functions.invoke("sync-project-github", {
+        body: { projectId },
+      });
+      const { data, error } = await supabase
+        .from("project_git_events")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("occurred_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return {
+        events: data ?? [],
+        syncError: sync.error ? "Could not refresh GitHub activity." : null,
+      };
     },
   });
 }

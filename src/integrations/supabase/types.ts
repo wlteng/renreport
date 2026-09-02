@@ -337,6 +337,59 @@ export type Database = {
           },
         ];
       };
+      project_git_events: {
+        Row: {
+          author_name: string | null;
+          created_at: string;
+          description: string | null;
+          event_url: string | null;
+          external_id: string;
+          id: string;
+          occurred_at: string;
+          project_id: string;
+          provider: string;
+          repository_full_name: string;
+          synced_at: string;
+          title: string;
+        };
+        Insert: {
+          author_name?: string | null;
+          created_at?: string;
+          description?: string | null;
+          event_url?: string | null;
+          external_id: string;
+          id?: string;
+          occurred_at: string;
+          project_id: string;
+          provider?: string;
+          repository_full_name: string;
+          synced_at?: string;
+          title: string;
+        };
+        Update: {
+          author_name?: string | null;
+          created_at?: string;
+          description?: string | null;
+          event_url?: string | null;
+          external_id?: string;
+          id?: string;
+          occurred_at?: string;
+          project_id?: string;
+          provider?: string;
+          repository_full_name?: string;
+          synced_at?: string;
+          title?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_git_events_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       project_tasks: {
         Row: {
           assignee_id: string | null;
@@ -420,6 +473,7 @@ export type Database = {
           owner_id: string | null;
           project_code: string | null;
           reserve_kg: number | null;
+          repository_url: string | null;
           status: Database["public"]["Enums"]["project_status"];
           updated_at: string;
           url: string | null;
@@ -442,6 +496,7 @@ export type Database = {
           owner_id?: string | null;
           project_code?: string | null;
           reserve_kg?: number | null;
+          repository_url?: string | null;
           status?: Database["public"]["Enums"]["project_status"];
           updated_at?: string;
           url?: string | null;
@@ -464,6 +519,7 @@ export type Database = {
           owner_id?: string | null;
           project_code?: string | null;
           reserve_kg?: number | null;
+          repository_url?: string | null;
           status?: Database["public"]["Enums"]["project_status"];
           updated_at?: string;
           url?: string | null;

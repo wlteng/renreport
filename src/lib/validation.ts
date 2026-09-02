@@ -9,6 +9,21 @@ const optionalTrimmed = (max: number) =>
     z.string().trim().max(max).optional(),
   );
 
+const optionalGithubRepository = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z
+    .string()
+    .trim()
+    .url("Enter a valid GitHub repository URL")
+    .max(2048)
+    .refine((value) => {
+      const url = new URL(value);
+      const parts = url.pathname.split("/").filter(Boolean);
+      return url.protocol === "https:" && url.hostname === "github.com" && parts.length === 2;
+    }, "Use a public GitHub repository URL")
+    .optional(),
+);
+
 const optionalNumber = (max: number) =>
   z.preprocess(
     (value) => (value === "" || value === null || value === undefined ? undefined : value),
@@ -96,6 +111,7 @@ export const projectSchema = z.object({
   department_id: optionalUuid,
   description: optionalTrimmed(2000),
   url: optionalTrimmed(2048),
+  repository_url: optionalGithubRepository,
   fund_amount: optionalNumber(999999999999.99),
   fund_currency: currencySchema,
 });
