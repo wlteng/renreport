@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { PenLine, Pencil, Trash2 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -27,6 +27,7 @@ import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
 import { todayForDateInput } from "@/lib/dates";
 import { useLanguage, type AppLanguage } from "@/lib/i18n";
+import { isWithinEditWindow } from "@/lib/reportEdits";
 import { removeReportImages, reportImageUrl } from "@/lib/reportImages";
 import { hasCapability, REPORT_TYPE_LABEL, SHIFT_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,28 @@ function isoDaysAgo(days: number) {
   const date = new Date();
   date.setDate(date.getDate() - days);
   return todayForDateInput(date);
+}
+
+/** Drops work logs that a later correction has replaced, keeping only the latest version. */
+function currentReports<T extends Pick<ReportRow, "id" | "supersedes_report_id">>(reports: T[]) {
+  const superseded = new Set(
+    reports.map((report) => report.supersedes_report_id).filter((id): id is string => !!id),
+  );
+  return reports.filter((report) => !superseded.has(report.id));
+}
+
+/** Earlier versions of a work log, newest first. */
+function historyOf(report: ReportRow, all: ReportRow[]) {
+  const byId = new Map(all.map((item) => [item.id, item]));
+  const history: ReportRow[] = [];
+  let cursor: ReportRow | undefined = report;
+  while (cursor?.supersedes_report_id) {
+    const previous = byId.get(cursor.supersedes_report_id);
+    if (!previous || history.includes(previous)) break;
+    history.push(previous);
+    cursor = previous;
+  }
+  return history;
 }
 
 function dayLabel(date: string, language: AppLanguage, t: (text: string) => string) {
@@ -123,6 +146,10 @@ function reportMeta(report: ReportRow, projectName: string, t: (text: string) =>
   ].join(" · ");
 }
 
+function reportStamp(report: ReportRow) {
+  return `${report.report_date}${report.report_time ? ` ${report.report_time.slice(0, 5)}` : ""}`;
+}
+
 function WorkLogRow({
   report,
   projectName,
@@ -147,9 +174,14 @@ function WorkLogRow({
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {report.title}
           </span>
-          <Badge className={cn("shrink-0", STATUS_TONE[report.work_status])}>
-            {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
-          </Badge>
+          <span className="flex shrink-0 gap-1.5">
+            {report.supersedes_report_id ? (
+              <Badge variant="outline">{t("Correction")}</Badge>
+            ) : null}
+            <Badge className={STATUS_TONE[report.work_status]}>
+              {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
+            </Badge>
+          </span>
         </span>
         <span className="mt-0.5 block truncate text-xs text-muted-foreground">
           {reportMeta(report, projectName, t)}
@@ -162,20 +194,87 @@ function WorkLogRow({
   );
 }
 
+function ReportBadges({ report }: { report: ReportRow }) {
+  const { t } = useLanguage();
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Badge className={STATUS_TONE[report.work_status]}>
+        {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
+      </Badge>
+      <Badge variant="outline">
+        {t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type)}
+        {report.activity_detail ? ` · ${report.activity_detail}` : ""}
+      </Badge>
+      <Badge variant="outline">{t(SHIFT_LABEL[report.shift] ?? report.shift)}</Badge>
+      <Badge variant="outline">{Number(report.hours_spent).toFixed(1)}h</Badge>
+    </div>
+  );
+}
+
+function ReportBody({ report, compact = false }: { report: ReportRow; compact?: boolean }) {
+  const { t } = useLanguage();
+  const text = compact ? "text-xs" : "text-sm";
+  return (
+    <div className="space-y-3">
+      <p className={cn("whitespace-pre-wrap leading-relaxed text-foreground/90", text)}>
+        {report.content}
+      </p>
+      {report.output_quantity !== null ? (
+        <p className="text-xs font-medium">
+          {t("Output")}: {Number(report.output_quantity).toLocaleString()} {report.output_unit}
+        </p>
+      ) : null}
+      {report.blockers ? (
+        <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+          {t("Blocker")}: {report.blockers}
+        </p>
+      ) : null}
+      {report.links ? (
+        <p className="break-all text-xs text-muted-foreground">{report.links}</p>
+      ) : null}
+      {report.image_urls?.length ? (
+        <div
+          className={cn(
+            "grid gap-2",
+            compact ? "grid-cols-4 sm:grid-cols-6" : "grid-cols-3 sm:grid-cols-4",
+          )}
+        >
+          {report.image_urls.map((image) => (
+            <a
+              key={image}
+              href={reportImageUrl(image)}
+              target="_blank"
+              rel="noreferrer"
+              className="aspect-square overflow-hidden rounded-md"
+            >
+              <img src={reportImageUrl(image)} alt="" className="size-full object-cover" />
+            </a>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function WorkLogDialog({
   report,
+  history,
   projectName,
+  canSubmitWork,
   deleting,
   onClose,
   onDelete,
 }: {
   report: ReportRow | null;
+  history: ReportRow[];
   projectName: string;
+  canSubmitWork: boolean;
   deleting: boolean;
   onClose: () => void;
   onDelete: (report: ReportRow) => void;
 }) {
   const { t } = useLanguage();
+  const editable = report ? isWithinEditWindow(report.created_at) : false;
   return (
     <Dialog
       open={report !== null}
@@ -189,64 +288,78 @@ function WorkLogDialog({
             <DialogHeader>
               <DialogTitle className="pr-6">{report.title}</DialogTitle>
               <DialogDescription>
-                {report.report_date}
-                {report.report_time ? ` ${report.report_time.slice(0, 5)}` : ""} · {projectName}
+                {reportStamp(report)} · {projectName}
+                {history.length ? ` · ${t("Correction")}` : ""}
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-wrap gap-2">
-              <Badge className={STATUS_TONE[report.work_status]}>
-                {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
-              </Badge>
-              <Badge variant="outline">
-                {t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type)}
-                {report.activity_detail ? ` · ${report.activity_detail}` : ""}
-              </Badge>
-              <Badge variant="outline">{t(SHIFT_LABEL[report.shift] ?? report.shift)}</Badge>
-              <Badge variant="outline">{Number(report.hours_spent).toFixed(1)}h</Badge>
-            </div>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-              {report.content}
-            </p>
-            {report.output_quantity !== null ? (
-              <p className="text-xs font-medium">
-                {t("Output")}: {Number(report.output_quantity).toLocaleString()}{" "}
-                {report.output_unit}
-              </p>
-            ) : null}
-            {report.blockers ? (
-              <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-                {t("Blocker")}: {report.blockers}
-              </p>
-            ) : null}
-            {report.links ? (
-              <p className="break-all text-xs text-muted-foreground">{report.links}</p>
-            ) : null}
-            {report.image_urls?.length ? (
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {report.image_urls.map((image) => (
-                  <a
-                    key={image}
-                    href={reportImageUrl(image)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="aspect-square overflow-hidden rounded-md"
+            <ReportBadges report={report} />
+            <ReportBody report={report} />
+            {history.length ? (
+              <section className="space-y-3 border-t border-border pt-4">
+                <h3 className="logbook-label">{t("History")}</h3>
+                {history.map((previous) => (
+                  <details
+                    key={previous.id}
+                    className="rounded-lg border border-border bg-muted/40 px-3 py-2"
                   >
-                    <img src={reportImageUrl(image)} alt="" className="size-full object-cover" />
-                  </a>
+                    <summary className="cursor-pointer text-xs">
+                      <span className="font-medium text-foreground">{previous.title}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {reportStamp(previous)} · {Number(previous.hours_spent).toFixed(1)}h ·{" "}
+                        {t("Superseded")}
+                      </span>
+                    </summary>
+                    <div className="mt-2">
+                      <ReportBody report={previous} compact />
+                    </div>
+                  </details>
                 ))}
-              </div>
+              </section>
+            ) : null}
+            {canSubmitWork ? (
+              <p className="text-xs text-muted-foreground">
+                {editable
+                  ? t("Editable for 1 hour after submission.")
+                  : t(
+                      "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.",
+                    )}
+              </p>
             ) : null}
             <DialogFooter className="gap-2 sm:justify-between">
-              <Button
-                type="button"
-                variant="outline"
-                className="text-destructive hover:text-destructive"
-                disabled={deleting}
-                onClick={() => onDelete(report)}
-              >
-                <Trash2 />
-                {t("Delete")}
-              </Button>
+              {canSubmitWork ? (
+                <div className="flex flex-wrap gap-2">
+                  {editable ? (
+                    <>
+                      <Button type="button" variant="outline" asChild>
+                        <Link to="/reports/new" search={{ edit: report.id }}>
+                          <Pencil />
+                          {t("Edit")}
+                        </Link>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="text-destructive hover:text-destructive"
+                        disabled={deleting}
+                        onClick={() => onDelete(report)}
+                      >
+                        <Trash2 />
+                        {t("Delete")}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button type="button" variant="outline" asChild>
+                      <Link to="/reports/new" search={{ correct: report.id }}>
+                        <PenLine />
+                        {t("Submit correction")}
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <span />
+              )}
               <DialogClose asChild>
                 <Button type="button">{t("Close")}</Button>
               </DialogClose>
@@ -270,13 +383,14 @@ function MyWorkSection({
   const queryClient = useQueryClient();
   const [visibleCount, setVisibleCount] = useState(RECENT_WORK_PAGE_SIZE);
   const [showExpandOptions, setShowExpandOptions] = useState(false);
-  const [selected, setSelected] = useState<ReportRow | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const all = useMemo(() => reports.data ?? [], [reports.data]);
-  const hasMore = all.length > visibleCount;
+  const current = useMemo(() => currentReports(all), [all]);
+  const hasMore = current.length > visibleCount;
   const days = useMemo(() => {
     const grouped = new Map<string, ReportRow[]>();
-    for (const report of all.slice(0, visibleCount)) {
+    for (const report of current.slice(0, visibleCount)) {
       const list = grouped.get(report.report_date) ?? [];
       list.push(report);
       grouped.set(report.report_date, list);
@@ -284,23 +398,29 @@ function MyWorkSection({
     return [...grouped.entries()].map(([date, items]) => ({
       date,
       items,
-      hours: all
+      hours: current
         .filter((report) => report.report_date === date)
         .reduce((sum, report) => sum + Number(report.hours_spent), 0),
     }));
-  }, [all, visibleCount]);
+  }, [current, visibleCount]);
+  const selected = selectedId ? (all.find((report) => report.id === selectedId) ?? null) : null;
+  const history = useMemo(() => (selected ? historyOf(selected, all) : []), [selected, all]);
   const projectName = (id: string | null) =>
     id ? (projects.data?.find((project) => project.id === id)?.name ?? "—") : "—";
 
   const remove = useMutation({
-    mutationFn: async ({ id, imagePaths }: { id: string; imagePaths: string[] }) => {
-      const { error } = await supabase.from("reports").delete().eq("id", id);
+    mutationFn: async (report: ReportRow) => {
+      const { error } = await supabase.from("reports").delete().eq("id", report.id);
       if (error) throw error;
-      await removeReportImages(imagePaths);
+      // Only files stored under this log are removed; a correction may share older ones.
+      const ownFolder = `${report.user_id}/${report.id}/`;
+      await removeReportImages(
+        (report.image_urls ?? []).filter((path) => path.startsWith(ownFolder)),
+      );
     },
     onSuccess: () => {
       toast.success(t("Work log deleted"));
-      setSelected(null);
+      setSelectedId(null);
       queryClient.invalidateQueries({ queryKey: ["my-reports"] });
       queryClient.invalidateQueries({ queryKey: ["visible-reports"] });
     },
@@ -335,7 +455,7 @@ function MyWorkSection({
                   key={report.id}
                   report={report}
                   projectName={projectName(report.project_id)}
-                  onOpen={() => setSelected(report)}
+                  onOpen={() => setSelectedId(report.id)}
                 />
               ))}
             </div>
@@ -346,7 +466,7 @@ function MyWorkSection({
             {t("Loading your work…")}
           </p>
         ) : null}
-        {!reports.isLoading && all.length === 0 ? (
+        {!reports.isLoading && current.length === 0 ? (
           <div className="logbook-card px-5 py-8 text-center">
             <p className="text-sm text-muted-foreground">
               {t("No work logs yet. Your first submission starts the operations record.")}
@@ -370,7 +490,11 @@ function MyWorkSection({
               >
                 {t("Show more")}
               </Button>
-              <Button type="button" variant="outline" onClick={() => setVisibleCount(all.length)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setVisibleCount(current.length)}
+              >
                 {t("Show all")}
               </Button>
             </div>
@@ -388,10 +512,12 @@ function MyWorkSection({
       ) : null}
       <WorkLogDialog
         report={selected}
+        history={history}
         projectName={projectName(selected?.project_id ?? null)}
+        canSubmitWork={canSubmitWork}
         deleting={remove.isPending}
-        onClose={() => setSelected(null)}
-        onDelete={(report) => remove.mutate({ id: report.id, imagePaths: report.image_urls ?? [] })}
+        onClose={() => setSelectedId(null)}
+        onDelete={(report) => remove.mutate(report)}
       />
     </section>
   );
@@ -407,16 +533,17 @@ function Dashboard() {
   const canSubmitWork = hasCapability(permissions, "submit_work", roles);
 
   const myWeek = useMemo(
-    () => (mine.data ?? []).filter((report) => report.report_date >= isoDaysAgo(6)),
+    () => currentReports(mine.data ?? []).filter((report) => report.report_date >= isoDaysAgo(6)),
     [mine.data],
   );
+  const teamWeek = useMemo(() => currentReports(week.data ?? []), [week.data]);
   const myHours = myWeek.reduce((sum, report) => sum + Number(report.hours_spent), 0);
-  const teamHours = (week.data ?? []).reduce((sum, report) => sum + Number(report.hours_spent), 0);
+  const teamHours = teamWeek.reduce((sum, report) => sum + Number(report.hours_spent), 0);
   const activeProjects = (projects.data ?? []).filter(
     (project) => project.status === "active",
   ).length;
   const reportedToday = new Set(
-    (week.data ?? [])
+    teamWeek
       .filter((report) => report.report_date === todayForDateInput())
       .map((report) => report.user_id),
   );
@@ -442,7 +569,7 @@ function Dashboard() {
         <StatRow>
           <Stat
             label="Staff submissions (7d)"
-            value={String(week.data?.length ?? 0)}
+            value={String(teamWeek.length)}
             tone="bg-stat-gold"
           />
           <Stat label="Reported hours (7d)" value={teamHours.toFixed(1)} tone="bg-stat-teal" />

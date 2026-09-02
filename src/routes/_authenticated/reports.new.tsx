@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ImagePlus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import { PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -11,16 +12,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/useSession";
-import { useActiveProjects, useProjectMembers } from "@/hooks/useData";
+import { useActiveProjects, useProjectMembers, useReport } from "@/hooks/useData";
 import { nowForTimeInput, todayForDateInput } from "@/lib/dates";
 import { useLanguage } from "@/lib/i18n";
 import {
   removeReportImages,
+  reportImageUrl,
   REPORT_IMAGE_BUCKET,
   REPORT_IMAGE_LIMIT,
   REPORT_IMAGE_MAX_BYTES,
   REPORT_IMAGE_TYPES,
 } from "@/lib/reportImages";
+import { isWithinEditWindow } from "@/lib/reportEdits";
 import { hasCapability, REPORT_TYPES, type ReportType } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { firstValidationError, workLogSchema } from "@/lib/validation";
@@ -74,6 +77,7 @@ function activityExtraFieldCount(type: ReportType) {
 
 type PendingImage = { file: File; id: string; preview: string };
 type DurationUnit = "days" | "hours" | "mins";
+type FormMode = "new" | "edit" | "correct";
 
 const IMAGE_EXTENSION: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -81,7 +85,14 @@ const IMAGE_EXTENSION: Record<string, string> = {
   "image/webp": "webp",
 };
 
+// ?edit=<id> edits a work log inside its edit window; ?correct=<id> submits a correction.
+const submitWorkSearchSchema = z.object({
+  edit: z.string().uuid().optional().catch(undefined),
+  correct: z.string().uuid().optional().catch(undefined),
+});
+
 export const Route = createFileRoute("/_authenticated/reports/new")({
+  validateSearch: (search: Record<string, unknown>) => submitWorkSearchSchema.parse(search),
   head: () => ({
     meta: [
       { title: "Submit work — Ren Report" },
@@ -100,6 +111,10 @@ function SubmitWork() {
   const projectMembers = useProjectMembers();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { edit: editId, correct: correctId } = Route.useSearch();
+  const mode: FormMode = editId ? "edit" : correctId ? "correct" : "new";
+  const sourceId = editId ?? correctId;
+  const source = useReport(sourceId);
   const allowed = !!profile?.is_active && hasCapability(permissions, "submit_work", roles);
   const userId = user?.id;
   const availableProjects = useMemo(() => {
@@ -119,7 +134,7 @@ function SubmitWork() {
   const [type, setType] = useState<ReportType>("normal_activity");
   const [activityDetail, setActivityDetail] = useState("");
   const [workStatus, setWorkStatus] = useState("completed");
-  const shift = "day";
+  const shift = mode === "new" ? "day" : (source.data?.shift ?? "day");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [hours, setHours] = useState("");
@@ -129,8 +144,10 @@ function SubmitWork() {
   const [blockers, setBlockers] = useState("");
   const [links, setLinks] = useState("");
   const [images, setImages] = useState<PendingImage[]>([]);
+  const [existingImages, setExistingImages] = useState<string[]>([]);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const previewUrls = useRef(new Set<string>());
+  const prefilled = useRef(false);
   const activityDetailPlaceholder = ACTIVITY_DETAIL_PLACEHOLDER[type];
   const activityExtraFields = ACTIVITY_EXTRA_FIELDS[type] ?? [];
   const activityLabel = REPORT_TYPES.find((item) => item.value === type)?.label ?? type;
@@ -153,13 +170,35 @@ function SubmitWork() {
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, []);
 
+  // Editing or correcting starts from the existing work log.
+  useEffect(() => {
+    const report = source.data;
+    if (mode === "new" || !report || prefilled.current) return;
+    prefilled.current = true;
+    setDate(report.report_date);
+    setTime(report.report_time ? report.report_time.slice(0, 5) : nowForTimeInput());
+    setProjectId(report.project_id ?? "");
+    setType(report.report_type);
+    setActivityDetail(report.activity_detail ?? "");
+    setWorkStatus(report.work_status);
+    setTitle(report.title);
+    setContent(report.content);
+    setHours(String(Number(report.hours_spent)));
+    setDurationUnit("hours");
+    setOutputQuantity(report.output_quantity === null ? "" : String(report.output_quantity));
+    setOutputUnit(report.output_unit ?? "");
+    setBlockers(report.blockers ?? "");
+    setLinks(report.links ?? "");
+    setExistingImages(report.image_urls ?? []);
+  }, [mode, source.data]);
+
   function addImages(files: FileList | File[]) {
     const candidates = Array.from(files);
     const valid = candidates.filter(
       (file) => REPORT_IMAGE_TYPES.has(file.type) && file.size <= REPORT_IMAGE_MAX_BYTES,
     );
     if (valid.length !== candidates.length) toast.error(t("Use JPG, PNG or WebP under 5 MB"));
-    const available = REPORT_IMAGE_LIMIT - images.length;
+    const available = REPORT_IMAGE_LIMIT - images.length - existingImages.length;
     if (valid.length > available) toast.error(t("You can add up to 5 images"));
     const additions = valid.slice(0, available).map((file) => {
       const preview = URL.createObjectURL(file);
@@ -211,7 +250,8 @@ function SubmitWork() {
       if (!availableProjects.some((project) => project.id === input.project_id)) {
         throw new Error(t("You must be assigned to this active project before submitting work."));
       }
-      const reportId = crypto.randomUUID();
+      if (mode !== "new" && !source.data) throw new Error(t("Work log not found."));
+      const reportId = mode === "edit" && editId ? editId : crypto.randomUUID();
       const imagePaths: string[] = [];
       try {
         for (const image of images) {
@@ -222,27 +262,49 @@ function SubmitWork() {
           if (uploadError) throw uploadError;
           imagePaths.push(path);
         }
-        const { error } = await supabase.from("reports").insert({
+        const allImages = [...existingImages, ...imagePaths];
+        const record = {
           ...input,
-          id: reportId,
-          user_id: user.id,
           activity_detail: input.activity_detail ?? null,
           output_quantity: input.output_quantity ?? null,
           output_unit: input.output_unit ?? null,
           blockers: input.blockers ?? null,
           links: input.links ?? null,
-          image_urls: imagePaths.length ? imagePaths : null,
-        });
-        if (error) throw error;
+          image_urls: allImages.length ? allImages : null,
+        };
+        if (mode === "edit") {
+          const { error } = await supabase.from("reports").update(record).eq("id", reportId);
+          if (error) throw error;
+          // Only files that belong to this log are removed; a correction may share older ones.
+          const dropped = (source.data?.image_urls ?? []).filter(
+            (path) => !existingImages.includes(path) && path.startsWith(`${user.id}/${reportId}/`),
+          );
+          await removeReportImages(dropped).catch(() => undefined);
+        } else {
+          const { error } = await supabase.from("reports").insert({
+            ...record,
+            id: reportId,
+            user_id: user.id,
+            supersedes_report_id: mode === "correct" ? (correctId ?? null) : null,
+          });
+          if (error) throw error;
+        }
       } catch (error) {
         await removeReportImages(imagePaths).catch(() => undefined);
         throw error;
       }
     },
     onSuccess: () => {
-      toast.success("Work log submitted");
+      toast.success(
+        mode === "edit"
+          ? t("Work log updated")
+          : mode === "correct"
+            ? t("Correction submitted")
+            : "Work log submitted",
+      );
       queryClient.invalidateQueries({ queryKey: ["my-reports"] });
       queryClient.invalidateQueries({ queryKey: ["visible-reports"] });
+      if (sourceId) queryClient.invalidateQueries({ queryKey: ["report", sourceId] });
       navigate({ to: "/dashboard" });
     },
     onError: (error) =>
@@ -264,6 +326,39 @@ function SubmitWork() {
     return <p className="text-sm text-muted-foreground">{t("Loading assigned projects…")}</p>;
   }
 
+  if (sourceId && source.isLoading) {
+    return <p className="text-sm text-muted-foreground">{t("Loading work log…")}</p>;
+  }
+
+  if (sourceId && (!source.data || source.data.user_id !== user?.id)) {
+    return (
+      <div className="logbook-card p-10 text-center">
+        <p className="text-sm text-muted-foreground">{t("Work log not found.")}</p>
+      </div>
+    );
+  }
+
+  if (mode === "edit" && source.data && !isWithinEditWindow(source.data.created_at)) {
+    return (
+      <>
+        <PageHeader title="Edit work log" />
+        <div className="logbook-card p-10 text-center">
+          <p className="text-sm text-muted-foreground">
+            {t("This work log is older than 1 hour and can only be corrected.")}
+          </p>
+          <Button
+            className="mt-4"
+            onClick={() =>
+              navigate({ to: "/reports/new", search: { correct: source.data!.id }, replace: true })
+            }
+          >
+            {t("Submit correction")}
+          </Button>
+        </div>
+      </>
+    );
+  }
+
   if (availableProjects.length === 0) {
     return (
       <>
@@ -280,7 +375,13 @@ function SubmitWork() {
   return (
     <>
       <PageHeader
-        title="Submit work log"
+        title={
+          mode === "edit"
+            ? "Edit work log"
+            : mode === "correct"
+              ? "Submit correction"
+              : "Submit work log"
+        }
         action={
           <select
             id="status"
@@ -300,6 +401,20 @@ function SubmitWork() {
           </select>
         }
       />
+      {mode !== "new" && source.data ? (
+        <div className="mb-5 rounded-lg border border-border bg-stat-gold/60 px-4 py-3">
+          <p className="text-sm font-medium">
+            {mode === "edit" ? t("Editing") : t("Correcting")}: {source.data.title}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {source.data.report_date}
+            {source.data.report_time ? ` ${source.data.report_time.slice(0, 5)}` : ""} ·{" "}
+            {mode === "edit"
+              ? t("Editable for 1 hour after submission.")
+              : t("The original stays in the history of the corrected log.")}
+          </p>
+        </div>
+      ) : null}
       <form
         className="space-y-5 [&_input]:shadow-none [&_textarea]:shadow-none sm:rounded-xl sm:border sm:border-border sm:bg-card sm:p-6 sm:shadow-card"
         onSubmit={(event) => {
@@ -452,6 +567,28 @@ function SubmitWork() {
               event.target.value = "";
             }}
           />
+          {existingImages.length ? (
+            <div className="mt-3">
+              <p className="mb-2 text-xs text-muted-foreground">{t("Existing images")}</p>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {existingImages.map((path) => (
+                  <div key={path} className="relative aspect-square overflow-hidden rounded-md">
+                    <img src={reportImageUrl(path)} alt="" className="size-full object-cover" />
+                    <button
+                      type="button"
+                      aria-label={t("Remove image")}
+                      className="absolute right-1 top-1 grid size-7 place-items-center rounded-full bg-background/90 text-foreground"
+                      onClick={() =>
+                        setExistingImages((current) => current.filter((item) => item !== path))
+                      }
+                    >
+                      <X className="size-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {images.length ? (
             <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
               {images.map((image) => (
@@ -541,7 +678,15 @@ function SubmitWork() {
             {t("Cancel")}
           </Button>
           <Button type="submit" disabled={save.isPending}>
-            {save.isPending ? t("Submitting…") : t("Submit work")}
+            {save.isPending
+              ? mode === "edit"
+                ? t("Saving…")
+                : t("Submitting…")
+              : mode === "edit"
+                ? t("Save changes")
+                : mode === "correct"
+                  ? t("Submit correction")
+                  : t("Submit work")}
           </Button>
         </div>
       </form>

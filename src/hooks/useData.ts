@@ -272,6 +272,22 @@ export function useMyReports(userId: string | undefined) {
   });
 }
 
+export function useReport(id: string | undefined) {
+  return useQuery({
+    queryKey: ["report", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("reports")
+        .select("*")
+        .eq("id", id!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
 export type ReportFilters = {
   from?: string;
   to?: string;
