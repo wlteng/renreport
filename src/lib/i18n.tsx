@@ -257,6 +257,7 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "Editable for 1 hour after submission.": "提交后 1 小时内可编辑或删除。",
   "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.":
     "已超过 1 小时，不能再编辑或删除，请提交修正版本。",
+  "Tap again on mobile to continue.": "在移动设备上再次点击以继续。",
   "The original stays in the history of the corrected log.": "原记录会保留在修正后日志的历史中。",
   "This work log is older than 1 hour and can only be corrected.":
     "该工作日志已超过 1 小时，只能提交修正。",
