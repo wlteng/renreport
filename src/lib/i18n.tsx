@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 export type AppLanguage = "en" | "zh";
 
@@ -234,6 +242,37 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "View all": "查看全部",
   "Show more": "显示更多",
   "Show all": "显示全部",
+  "Sign in": "登录",
+  "Get started": "开始使用",
+  "I already have an account": "我已有账户",
+  "Gold mining operations log": "金矿运营工作日志",
+  "Know what is happening across every mine project, shift and expense.":
+    "随时掌握每个矿区项目、班次和费用的进展。",
+  "Ren Report records the work, production output, blockers, project costs and staff administration behind the gold mines your team operates and invests in.":
+    "Ren Report 记录团队运营和投资的金矿背后的工作、产量、阻碍事项、项目成本和员工管理。",
+  "Staff write": "员工记录",
+  "Submit mine project, shift, activity, hours, output, blockers and supporting evidence.":
+    "提交矿区项目、班次、活动、工时、产量、阻碍事项和佐证材料。",
+  "Operations stay visible": "运营一目了然",
+  "Review all-staff activity and project expenses by person, mine, status and date range.":
+    "按人员、矿区、状态和日期范围查看全体员工动态和项目费用。",
+  "Admins control": "管理员掌控",
+  "Manage staff accounts, departments, roles, permissions, salaries and mine projects.":
+    "管理员工账户、部门、角色、权限、薪资和矿区项目。",
+  "Gold mining work, projects and expenses.": "金矿工作、项目与费用。",
+  "Staff accounts and temporary passwords are created by an administrator.":
+    "员工账户和临时密码由管理员创建。",
+  "Username or email": "用户名或邮箱",
+  Password: "密码",
+  "Please wait…": "请稍候……",
+  "Something went wrong": "出了点问题",
+  "Page not found": "页面不存在",
+  "The page you're looking for doesn't exist or has been moved.": "您要找的页面不存在或已被移动。",
+  "Go home": "返回首页",
+  "This page didn't load": "页面加载失败",
+  "Something went wrong on our end. You can try refreshing or head back home.":
+    "我们这边出了点问题，您可以刷新重试或返回首页。",
+  "Try again": "重试",
   Today: "今天",
   Yesterday: "昨天",
   Close: "关闭",
@@ -413,26 +452,47 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
-function initialLanguage(): AppLanguage {
-  if (typeof window === "undefined") return "en";
-  return window.localStorage.getItem(LANGUAGE_STORAGE_KEY) === "zh" ? "zh" : "en";
+export const DEFAULT_LANGUAGE: AppLanguage = "zh";
+
+function storedLanguage(): AppLanguage | null {
+  try {
+    const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    return stored === "en" || stored === "zh" ? stored : null;
+  } catch {
+    return null;
+  }
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<AppLanguage>(initialLanguage);
+  // Start from the default on both server and client so hydration matches, then
+  // apply a remembered preference once the page is mounted.
+  const [language, setLanguageState] = useState<AppLanguage>(DEFAULT_LANGUAGE);
+
+  useEffect(() => {
+    const stored = storedLanguage();
+    if (stored && stored !== DEFAULT_LANGUAGE) setLanguageState(stored);
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
-    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
+
+  const setLanguage = useCallback((next: AppLanguage) => {
+    setLanguageState(next);
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, next);
+    } catch {
+      // Private mode or blocked storage: the choice still applies for this visit.
+    }
+  }, []);
 
   const value = useMemo<LanguageContextValue>(
     () => ({
       language,
-      setLanguage: setLanguageState,
+      setLanguage,
       t: (text) => (language === "zh" ? (ZH_TRANSLATIONS[text] ?? text) : text),
     }),
-    [language],
+    [language, setLanguage],
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
