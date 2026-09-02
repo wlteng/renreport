@@ -4,7 +4,17 @@ import { Trash2 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useMyReports,
@@ -16,9 +26,10 @@ import {
 import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
 import { todayForDateInput } from "@/lib/dates";
-import { useLanguage } from "@/lib/i18n";
+import { useLanguage, type AppLanguage } from "@/lib/i18n";
 import { removeReportImages, reportImageUrl } from "@/lib/reportImages";
 import { hasCapability, REPORT_TYPE_LABEL, SHIFT_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -41,10 +52,34 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 /** How many of the newest work logs are shown before the reader asks for more. */
 const RECENT_WORK_PAGE_SIZE = 6;
 
+/** Badge tones per work status, drawn from the logbook stat palette. */
+const STATUS_TONE: Record<string, string> = {
+  completed: "border-transparent bg-stat-teal text-secondary-foreground",
+  in_progress: "border-transparent bg-stat-gold text-foreground",
+  blocked: "border-transparent bg-stat-copper text-accent-foreground",
+};
+
 function isoDaysAgo(days: number) {
   const date = new Date();
   date.setDate(date.getDate() - days);
   return todayForDateInput(date);
+}
+
+function dayLabel(date: string, language: AppLanguage, t: (text: string) => string) {
+  const parts = date.split("-").map(Number);
+  const year = parts[0] ?? 0;
+  const month = parts[1] ?? 1;
+  const day = parts[2] ?? 1;
+  const local = new Date(year, month - 1, day);
+  const short =
+    language === "zh"
+      ? `${month}月${day}日`
+      : local.toLocaleDateString("en", { month: "short", day: "numeric" });
+  if (date === todayForDateInput()) return `${t("Today")} · ${short}`;
+  if (date === isoDaysAgo(1)) return `${t("Yesterday")} · ${short}`;
+  return language === "zh"
+    ? `${year}年${month}月${day}日`
+    : local.toLocaleDateString("en", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function Stat({
@@ -78,76 +113,148 @@ function StatRow({ children }: { children: ReactNode }) {
   );
 }
 
+function reportMeta(report: ReportRow, projectName: string, t: (text: string) => string) {
+  return [
+    t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type) +
+      (report.activity_detail ? ` · ${report.activity_detail}` : ""),
+    projectName,
+    t(SHIFT_LABEL[report.shift] ?? report.shift),
+    `${Number(report.hours_spent).toFixed(1)}h`,
+  ].join(" · ");
+}
+
 function WorkLogRow({
   report,
   projectName,
-  onDelete,
+  onOpen,
 }: {
   report: ReportRow;
   projectName: string;
-  onDelete: () => void;
+  onOpen: () => void;
 }) {
   const { t } = useLanguage();
   return (
-    <article className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-start sm:gap-4">
-      <div className="flex shrink-0 gap-2 text-xs text-muted-foreground sm:w-24 sm:flex-col sm:gap-0">
-        <span>{report.report_date}</span>
-        {report.report_time ? <span>{report.report_time.slice(0, 5)}</span> : null}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-sm font-medium">{report.title}</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type)}
-              {report.activity_detail ? ` · ${report.activity_detail}` : ""} · {projectName} ·{" "}
-              {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)} ·{" "}
-              {t(SHIFT_LABEL[report.shift] ?? report.shift)} ·{" "}
-              {Number(report.hours_spent).toFixed(1)}h
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
-            aria-label={t("Delete work log")}
-          >
-            <Trash2 className="size-4" />
-          </button>
-        </div>
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none sm:px-5 sm:py-4"
+    >
+      <span className="w-11 shrink-0 pt-0.5 text-xs font-semibold tabular-nums text-primary">
+        {report.report_time ? report.report_time.slice(0, 5) : "—"}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-start justify-between gap-2">
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+            {report.title}
+          </span>
+          <Badge className={cn("shrink-0", STATUS_TONE[report.work_status])}>
+            {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
+          </Badge>
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+          {reportMeta(report, projectName, t)}
+        </span>
+        <span className="mt-1.5 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">
           {report.content}
-        </p>
-        {report.output_quantity !== null ? (
-          <p className="mt-2 text-xs font-medium">
-            {t("Output")}: {Number(report.output_quantity).toLocaleString()} {report.output_unit}
-          </p>
-        ) : null}
-        {report.blockers ? (
-          <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-            {t("Blocker")}: {report.blockers}
-          </p>
-        ) : null}
-        {report.links ? (
-          <p className="mt-2 break-all text-xs text-muted-foreground">{report.links}</p>
-        ) : null}
-        {report.image_urls?.length ? (
-          <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {report.image_urls.map((image) => (
-              <a
-                key={image}
-                href={reportImageUrl(image)}
-                target="_blank"
-                rel="noreferrer"
-                className="aspect-square overflow-hidden rounded-md"
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function WorkLogDialog({
+  report,
+  projectName,
+  deleting,
+  onClose,
+  onDelete,
+}: {
+  report: ReportRow | null;
+  projectName: string;
+  deleting: boolean;
+  onClose: () => void;
+  onDelete: (report: ReportRow) => void;
+}) {
+  const { t } = useLanguage();
+  return (
+    <Dialog
+      open={report !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        {report ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="pr-6">{report.title}</DialogTitle>
+              <DialogDescription>
+                {report.report_date}
+                {report.report_time ? ` ${report.report_time.slice(0, 5)}` : ""} · {projectName}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-wrap gap-2">
+              <Badge className={STATUS_TONE[report.work_status]}>
+                {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
+              </Badge>
+              <Badge variant="outline">
+                {t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type)}
+                {report.activity_detail ? ` · ${report.activity_detail}` : ""}
+              </Badge>
+              <Badge variant="outline">{t(SHIFT_LABEL[report.shift] ?? report.shift)}</Badge>
+              <Badge variant="outline">{Number(report.hours_spent).toFixed(1)}h</Badge>
+            </div>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+              {report.content}
+            </p>
+            {report.output_quantity !== null ? (
+              <p className="text-xs font-medium">
+                {t("Output")}: {Number(report.output_quantity).toLocaleString()}{" "}
+                {report.output_unit}
+              </p>
+            ) : null}
+            {report.blockers ? (
+              <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                {t("Blocker")}: {report.blockers}
+              </p>
+            ) : null}
+            {report.links ? (
+              <p className="break-all text-xs text-muted-foreground">{report.links}</p>
+            ) : null}
+            {report.image_urls?.length ? (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {report.image_urls.map((image) => (
+                  <a
+                    key={image}
+                    href={reportImageUrl(image)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="aspect-square overflow-hidden rounded-md"
+                  >
+                    <img src={reportImageUrl(image)} alt="" className="size-full object-cover" />
+                  </a>
+                ))}
+              </div>
+            ) : null}
+            <DialogFooter className="gap-2 sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                disabled={deleting}
+                onClick={() => onDelete(report)}
               >
-                <img src={reportImageUrl(image)} alt="" className="size-full object-cover" />
-              </a>
-            ))}
-          </div>
+                <Trash2 />
+                {t("Delete")}
+              </Button>
+              <DialogClose asChild>
+                <Button type="button">{t("Close")}</Button>
+              </DialogClose>
+            </DialogFooter>
+          </>
         ) : null}
-      </div>
-    </article>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -158,15 +265,30 @@ function MyWorkSection({
   reports: ReturnType<typeof useMyReports>;
   canSubmitWork: boolean;
 }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const projects = useProjects();
   const queryClient = useQueryClient();
   const [visibleCount, setVisibleCount] = useState(RECENT_WORK_PAGE_SIZE);
   const [showExpandOptions, setShowExpandOptions] = useState(false);
+  const [selected, setSelected] = useState<ReportRow | null>(null);
 
-  const all = reports.data ?? [];
-  const visible = all.slice(0, visibleCount);
+  const all = useMemo(() => reports.data ?? [], [reports.data]);
   const hasMore = all.length > visibleCount;
+  const days = useMemo(() => {
+    const grouped = new Map<string, ReportRow[]>();
+    for (const report of all.slice(0, visibleCount)) {
+      const list = grouped.get(report.report_date) ?? [];
+      list.push(report);
+      grouped.set(report.report_date, list);
+    }
+    return [...grouped.entries()].map(([date, items]) => ({
+      date,
+      items,
+      hours: all
+        .filter((report) => report.report_date === date)
+        .reduce((sum, report) => sum + Number(report.hours_spent), 0),
+    }));
+  }, [all, visibleCount]);
   const projectName = (id: string | null) =>
     id ? (projects.data?.find((project) => project.id === id)?.name ?? "—") : "—";
 
@@ -178,6 +300,7 @@ function MyWorkSection({
     },
     onSuccess: () => {
       toast.success(t("Work log deleted"));
+      setSelected(null);
       queryClient.invalidateQueries({ queryKey: ["my-reports"] });
       queryClient.invalidateQueries({ queryKey: ["visible-reports"] });
     },
@@ -195,22 +318,36 @@ function MyWorkSection({
           </Button>
         ) : null}
       </div>
-      <div className="logbook-card divide-y divide-border">
-        {visible.map((report) => (
-          <WorkLogRow
-            key={report.id}
-            report={report}
-            projectName={projectName(report.project_id)}
-            onDelete={() => remove.mutate({ id: report.id, imagePaths: report.image_urls ?? [] })}
-          />
+      <div className="space-y-4">
+        {days.map((day) => (
+          <div key={day.date} className="logbook-card overflow-hidden">
+            <div className="flex items-center justify-between gap-3 bg-secondary px-4 py-2.5 sm:px-5">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                {dayLabel(day.date, language, t)}
+              </h3>
+              <span className="rounded-full bg-card/80 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-secondary-foreground">
+                {day.hours.toFixed(1)}h
+              </span>
+            </div>
+            <div className="divide-y divide-border">
+              {day.items.map((report) => (
+                <WorkLogRow
+                  key={report.id}
+                  report={report}
+                  projectName={projectName(report.project_id)}
+                  onOpen={() => setSelected(report)}
+                />
+              ))}
+            </div>
+          </div>
         ))}
         {reports.isLoading ? (
-          <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+          <p className="logbook-card px-5 py-8 text-center text-sm text-muted-foreground">
             {t("Loading your work…")}
           </p>
         ) : null}
         {!reports.isLoading && all.length === 0 ? (
-          <div className="px-5 py-8 text-center">
+          <div className="logbook-card px-5 py-8 text-center">
             <p className="text-sm text-muted-foreground">
               {t("No work logs yet. Your first submission starts the operations record.")}
             </p>
@@ -249,6 +386,13 @@ function MyWorkSection({
           )}
         </div>
       ) : null}
+      <WorkLogDialog
+        report={selected}
+        projectName={projectName(selected?.project_id ?? null)}
+        deleting={remove.isPending}
+        onClose={() => setSelected(null)}
+        onDelete={(report) => remove.mutate({ id: report.id, imagePaths: report.image_urls ?? [] })}
+      />
     </section>
   );
 }
