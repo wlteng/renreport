@@ -111,7 +111,7 @@ Deno.serve(async (request) => {
   const githubHeaders: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "Ren-Report",
-    "X-GitHub-Api-Version": "2026-03-10",
+    "X-GitHub-Api-Version": "2022-11-28",
   };
   const githubToken = env("GITHUB_TOKEN");
   if (githubToken) githubHeaders.Authorization = `Bearer ${githubToken}`;
