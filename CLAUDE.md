@@ -15,13 +15,14 @@ published history on the connected branch).
 3. **Pinyin — sibilant initials only.** Do NOT add pinyin generally. Add pinyin
    ONLY for characters whose pronunciation begins with `z-`, `c-`, `s-`, `zh-`,
    `ch-`, or `sh-`, written in parentheses immediately after the character.
-   Examples: 在(zài), 走(zǒu), 从(cóng), 才(cái), 三(sān), 所(suǒ), 中(zhōng),
-   吃(chī), 说(shuō), 事(shì).
+   Examples: 走(zǒu), 从(cóng), 才(cái), 所(suǒ), 中(zhōng), 时(shí), 次(cì),
+   只(zhǐ), 出(chū), 早(zǎo).
 
    Purpose: learning to tell the flat series (z/c/s) from the retroflex series
    (zh/ch/sh) apart.
 
-   **Excluded — already learned, never annotate these:** 是, 这.
+   **Excluded — already learned, never annotate these:** 是, 这, 三, 吃, 事,
+   说, 在.
 
 4. **Numbers with Russian.** Write every number as: the digit, then the Russian
    word, its Latin transliteration, and an English soundalike word or syllable
