@@ -78,6 +78,7 @@ import {
   PROJECT_CATEGORY_OPTIONS,
   PROJECT_LEGAL_NAME_LABEL,
   PROJECT_LOCATION_LABEL,
+  PROJECT_STATUS_TONE,
   PROJECT_URL_LABEL,
 } from "@/lib/projects";
 import { hasCapability, WORK_STATUS_LABEL } from "@/lib/roles";
@@ -618,7 +619,7 @@ function ProjectDetailPage() {
                 {t("Delete project")}
               </Button>
             ) : null}
-            <Badge variant={project.status === "active" ? "default" : "secondary"}>
+            <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
               {t(STATUS_LABEL[project.status] ?? project.status)}
             </Badge>
           </div>

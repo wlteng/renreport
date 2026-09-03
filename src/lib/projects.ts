@@ -35,6 +35,29 @@ export const PROJECT_URL_LABEL: Record<string, string | undefined> = {
   software: "Web address",
 };
 
+export const PROJECT_STATUS_LABEL: Record<string, string> = {
+  active: "Active",
+  paused: "Paused",
+  completed: "Completed",
+  archived: "Archived",
+};
+
+/** Badge tones per project status, drawn from the logbook stat palette. */
+export const PROJECT_STATUS_TONE: Record<string, string> = {
+  active: "border-transparent bg-stat-teal text-secondary-foreground",
+  paused: "border-transparent bg-stat-gold text-foreground",
+  completed: "border-transparent bg-stat-violet text-foreground",
+  archived: "border-transparent bg-muted text-muted-foreground",
+};
+
+/** Display order on the projects list: live work first, archived last. */
+export const PROJECT_STATUS_ORDER: Record<string, number> = {
+  active: 0,
+  paused: 1,
+  completed: 2,
+  archived: 3,
+};
+
 export const MINING_METHOD_LABEL: Record<string, string> = {
   alluvial: "Alluvial",
   open_pit: "Open pit",

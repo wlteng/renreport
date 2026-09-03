@@ -146,6 +146,20 @@ export function useProjectGitEvents(
   });
 }
 
+/** Completion counts for every visible project's to-do list, for the projects overview. */
+export function useProjectTaskSummary() {
+  return useQuery({
+    queryKey: ["project-tasks", "summary"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("project_tasks")
+        .select("project_id, is_completed");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
 export function usePeople() {
   return useQuery({
     queryKey: ["people"],

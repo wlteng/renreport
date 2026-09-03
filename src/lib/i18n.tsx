@@ -245,6 +245,13 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "View all": "查看全部",
   "Show more": "显示更多",
   "Show all": "显示全部",
+  "Last 7 days": "近 7 天",
+  "Project created": "项目已创建",
+  "Project archived": "项目已归档",
+  "Could not create project": "无法创建项目",
+  "Could not archive": "无法归档",
+  "Archived projects stay in the list for history but no longer accept work logs.":
+    "已归档的项目会保留在列表中作为历史，但不再接收工作日志。",
   Replaces: "替换",
   "Change photo": "更换头像",
   "Remove photo": "移除头像",
