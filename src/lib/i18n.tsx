@@ -282,6 +282,12 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   Editing: "正在编辑",
   Correcting: "正在修正",
   "Submit correction": "提交修正",
+  "Create corrected version": "创建修正版",
+  "You are creating a corrected version": "您正在创建修正版",
+  "A corrected version cannot be created": "无法创建修正版",
+  "This work log cannot be edited": "无法编辑此工作日志",
+  "Original work log": "原工作日志",
+  "Return to dashboard": "返回首页",
   Correction: "修正版",
   "Correction submitted": "修正已提交",
   History: "历史版本",
@@ -290,6 +296,14 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "Editable for 1 hour after submission.": "提交后 1 小时内可编辑或删除。",
   "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.":
     "已超过 1 小时，不能再编辑或删除，请提交修正版本。",
+  "This original log is locked after 1 hour. Open a prefilled form to create a corrected version; the original stays unchanged in history.":
+    "原工作日志超过 1 小时后已锁定。打开预填表单可创建修正版；原记录会保持不变并保留在历史中。",
+  "This project must be active and assigned to you before you can create a corrected version.":
+    "只有在该项目处于进行中并已分配给您的情况下，才能创建修正版。",
+  "This project must be active and assigned to you before you can edit this work log.":
+    "只有在该项目处于进行中并已分配给您的情况下，才能编辑此工作日志。",
+  "The original work log is locked and stays unchanged in history. This form is prefilled from it; update what needs correcting, then submit the new version.":
+    "原工作日志已锁定，并会保持不变地保留在历史中。此表单已根据原记录预填；请修改需要修正的内容，然后提交新版本。",
   "Tap again on mobile to continue.": "在移动设备上再次点击以继续。",
   "The original stays in the history of the corrected log.": "原记录会保留在修正后日志的历史中。",
   "This work log is older than 1 hour and can only be corrected.":
@@ -319,13 +333,13 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "Get started": "开始使用",
   "I already have an account": "我已有账户",
   "Gold mining operations log": "金矿运营工作日志",
-  "Know what is happening across every mine project, shift and expense.":
-    "随时掌握每个矿区项目、班次和费用的进展。",
+  "Know what is happening across every mine project and expense.":
+    "随时掌握每个矿区项目和费用的进展。",
   "Ren Report records the work, production output, blockers, project costs and staff administration behind the gold mines your team operates and invests in.":
     "任报告记录团队运营和投资的金矿背后的工作、产量、阻碍事项、项目成本和员工管理。",
   "Staff write": "员工记录",
-  "Submit mine project, shift, activity, hours, output, blockers and supporting evidence.":
-    "提交矿区项目、班次、活动、工时、产量、阻碍事项和佐证材料。",
+  "Submit mine project activity, hours, output, blockers and supporting evidence.":
+    "提交矿区项目活动、工时、产量、阻碍事项和佐证材料。",
   "Operations stay visible": "运营一目了然",
   "Review all-staff activity and project expenses by person, mine, status and date range.":
     "按人员、矿区、状态和日期范围查看全体员工动态和项目费用。",
@@ -372,9 +386,6 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   Maintenance: "维护",
   Safety: "安全",
   Administration: "行政",
-  "Day shift": "白班",
-  "Night shift": "夜班",
-  "Other shift": "其他班次",
   "Saving…": "正在保存…",
   "Loading project…": "正在加载项目…",
   "Could not load the project": "无法加载项目",
@@ -436,9 +447,6 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "Document or administrative item": "行政文件或事项",
   "Describe the activity": "描述工作内容",
   "Work status": "工作状态",
-  Shift: "班次",
-  Day: "白班",
-  Night: "夜班",
   "Task / headline": "工作标题",
   Title: "标题",
   "What work was carried out?": "完成了什么工作？",
@@ -465,8 +473,6 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "Remove image": "移除图片",
   Image: "图片",
   "Submitting…": "正在提交…",
-  "Record the project activity, shift, output and any blockers.":
-    "记录项目活动、班次、产出和任何阻碍事项。",
   "The all-staff project submission feed, enforced by database capability policies.":
     "全体员工的项目提交动态，由数据库权限策略控制。",
   "Audit log": "审计日志",

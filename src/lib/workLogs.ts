@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from "react";
 
 import type { ReportRow } from "@/hooks/useData";
-import { REPORT_TYPE_LABEL, SHIFT_LABEL } from "@/lib/roles";
+import { REPORT_TYPE_LABEL } from "@/lib/roles";
 
 /** Badge tones per work status, drawn from the logbook stat palette. */
 export const STATUS_TONE: Record<string, string> = {
@@ -49,7 +49,6 @@ export function reportMeta(
     t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type) +
       (report.activity_detail ? ` · ${report.activity_detail}` : ""),
     projectName,
-    t(SHIFT_LABEL[report.shift] ?? report.shift),
     `${Number(report.hours_spent).toFixed(1)}h`,
   ].join(" · ");
 }

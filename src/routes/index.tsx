@@ -28,7 +28,7 @@ const PILLARS = [
   {
     icon: ClipboardList,
     title: "Staff write",
-    body: "Submit mine project, shift, activity, hours, output, blockers and supporting evidence.",
+    body: "Submit mine project activity, hours, output, blockers and supporting evidence.",
   },
   {
     icon: Eye,
@@ -63,7 +63,7 @@ function Landing() {
         <section className="py-14 sm:py-20">
           <p className="logbook-label">{t("Gold mining operations log")}</p>
           <h1 className="mt-3 max-w-2xl text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
-            {t("Know what is happening across every mine project, shift and expense.")}
+            {t("Know what is happening across every mine project and expense.")}
           </h1>
           <p className="mt-5 max-w-xl text-base text-muted-foreground">
             {t(

@@ -4,7 +4,7 @@ import { PenLine, Pencil, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { ImageLightbox, WorkLogDialog, WorkLogImages } from "@/components/WorkLog";
+import { ImageLightbox, WorkLogDialog, WorkLogThumbnail } from "@/components/WorkLog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   useMyReports,
   usePeople,
+  useProjectMembers,
   useProjects,
   useVisibleReports,
   type ReportRow,
@@ -123,17 +124,17 @@ function WorkLogRow({
         {report.report_time ? report.report_time.slice(0, 5) : "—"}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {report.title}
           </span>
-          <span className="flex shrink-0 gap-1.5">
-            {report.supersedes_report_id ? (
-              <Badge variant="outline">{t("Correction")}</Badge>
-            ) : null}
+          <span className="flex shrink-0 items-center gap-1.5">
             <Badge className={STATUS_TONE[report.work_status]}>
               {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
             </Badge>
+            {report.supersedes_report_id ? (
+              <Badge variant="outline">{t("Correction")}</Badge>
+            ) : null}
           </span>
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -142,25 +143,44 @@ function WorkLogRow({
         <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
           {report.content}
         </p>
-        {report.image_urls?.length ? (
-          <div className="mt-2">
-            <WorkLogImages images={report.image_urls} compact onOpen={onOpenImage} />
-          </div>
-        ) : null}
       </div>
+      <WorkLogThumbnail images={report.image_urls} onOpen={onOpenImage} />
     </div>
   );
 }
 
 /** Correction button that explains the locked edit window; on touch screens the first tap shows the note. */
-function CorrectionLink({ reportId }: { reportId: string }) {
+function CorrectionLink({ reportId, disabled }: { reportId: string; disabled: boolean }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [touchReady, setTouchReady] = useState(false);
   const pointerType = useRef<string | null>(null);
   const explanation = t(
-    "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.",
+    "This original log is locked after 1 hour. Open a prefilled form to create a corrected version; the original stays unchanged in history.",
   );
+  const unavailable = t(
+    "This project must be active and assigned to you before you can create a corrected version.",
+  );
+
+  if (disabled) {
+    return (
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={0} role="button" aria-disabled="true" aria-label={unavailable}>
+              <Button type="button" variant="outline" disabled>
+                <PenLine />
+                {t("Create corrected version")}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-72 text-pretty px-3 py-2 leading-relaxed">
+            {unavailable}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -191,7 +211,7 @@ function CorrectionLink({ reportId }: { reportId: string }) {
               }}
             >
               <PenLine />
-              {t("Submit correction")}
+              {t("Create corrected version")}
             </Link>
           </Button>
         </TooltipTrigger>
@@ -209,9 +229,11 @@ function CorrectionLink({ reportId }: { reportId: string }) {
 function MyWorkSection({
   reports,
   canSubmitWork,
+  assignedActiveProjectIds,
 }: {
   reports: ReturnType<typeof useMyReports>;
   canSubmitWork: boolean;
+  assignedActiveProjectIds: ReadonlySet<string>;
 }) {
   const { language, t } = useLanguage();
   const projects = useProjects();
@@ -381,7 +403,12 @@ function MyWorkSection({
                   </Button>
                 </>
               ) : (
-                <CorrectionLink reportId={selected.id} />
+                <CorrectionLink
+                  reportId={selected.id}
+                  disabled={
+                    !selected.project_id || !assignedActiveProjectIds.has(selected.project_id)
+                  }
+                />
               )}
             </div>
           ) : null
@@ -398,8 +425,21 @@ function Dashboard() {
   const mine = useMyReports(user?.id);
   const people = usePeople();
   const projects = useProjects();
+  const projectMembers = useProjectMembers();
   const week = useVisibleReports({ from: isoDaysAgo(6) });
   const canSubmitWork = hasCapability(permissions, "submit_work", roles);
+  const assignedActiveProjectIds = useMemo(() => {
+    const activeProjectIds = new Set(
+      (projects.data ?? [])
+        .filter((project) => project.status === "active")
+        .map((project) => project.id),
+    );
+    return new Set(
+      (projectMembers.data ?? [])
+        .filter((member) => member.user_id === user?.id && activeProjectIds.has(member.project_id))
+        .map((member) => member.project_id),
+    );
+  }, [projectMembers.data, projects.data, user?.id]);
 
   const myWeek = useMemo(
     () => currentReports(mine.data ?? []).filter((report) => report.report_date >= isoDaysAgo(6)),
@@ -422,9 +462,13 @@ function Dashboard() {
 
   return (
     <Tabs defaultValue="mine">
-      <TabsList className="grid w-full grid-cols-2">
-        <TabsTrigger value="mine">{t("My tasks")}</TabsTrigger>
-        <TabsTrigger value="team">{t("Team tasks")}</TabsTrigger>
+      <TabsList className="grid h-9 w-full grid-cols-2 p-0">
+        <TabsTrigger value="mine" className="h-9">
+          {t("My tasks")}
+        </TabsTrigger>
+        <TabsTrigger value="team" className="h-9">
+          {t("Team tasks")}
+        </TabsTrigger>
       </TabsList>
       <TabsContent value="mine" className="mt-4">
         <StatRow>
@@ -432,7 +476,11 @@ function Dashboard() {
           <Stat label="Your hours (7d)" value={myHours.toFixed(1)} tone="bg-stat-teal" />
           <Stat label="Active projects" value={String(activeProjects)} tone="bg-stat-violet" />
         </StatRow>
-        <MyWorkSection reports={mine} canSubmitWork={canSubmitWork} />
+        <MyWorkSection
+          reports={mine}
+          canSubmitWork={canSubmitWork}
+          assignedActiveProjectIds={assignedActiveProjectIds}
+        />
       </TabsContent>
       <TabsContent value="team" className="mt-4">
         <StatRow>

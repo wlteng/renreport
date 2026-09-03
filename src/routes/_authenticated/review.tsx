@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { z } from "zod";
 
 import { PageHeader } from "@/components/AppShell";
-import { ImageLightbox, WorkLogDialog, WorkLogImages } from "@/components/WorkLog";
+import { ImageLightbox, WorkLogDialog, WorkLogThumbnail } from "@/components/WorkLog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -112,17 +112,17 @@ function FeedRow({
         </AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {report.title}
           </span>
           <span className="flex shrink-0 items-center gap-1.5">
-            {report.supersedes_report_id ? (
-              <Badge variant="outline">{t("Correction")}</Badge>
-            ) : null}
             <Badge className={STATUS_TONE[report.work_status]}>
               {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
             </Badge>
+            {report.supersedes_report_id ? (
+              <Badge variant="outline">{t("Correction")}</Badge>
+            ) : null}
           </span>
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -137,12 +137,8 @@ function FeedRow({
         <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
           {report.content}
         </p>
-        {report.image_urls?.length ? (
-          <div className="mt-2">
-            <WorkLogImages images={report.image_urls} compact onOpen={onOpenImage} />
-          </div>
-        ) : null}
       </div>
+      <WorkLogThumbnail images={report.image_urls} onOpen={onOpenImage} />
     </div>
   );
 }
@@ -399,6 +395,7 @@ function Review() {
         history={history}
         projectName={projectName(selected?.project_id ?? null)}
         personName={selected ? displayName(personById(selected.user_id), t) : undefined}
+        showCloseAction={false}
         onClose={() => setSelectedId(null)}
         onOpenImage={setLightbox}
       />
