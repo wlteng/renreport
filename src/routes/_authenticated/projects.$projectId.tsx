@@ -301,12 +301,14 @@ function ProjectDetailPage() {
       .map(([currency, amount]) => formatMoney(currency, amount))
       .join(" · ");
   }, [expenses.data]);
+  const hasVisibleExpenses = (expenses.data?.length ?? 0) > 0;
 
   const category = project?.category ?? "mine";
   const legalNameLabel = PROJECT_LEGAL_NAME_LABEL[category] ?? "Legal name";
   const locationLabel = PROJECT_LOCATION_LABEL[category];
   const urlLabel = PROJECT_URL_LABEL[category];
   const fundCurrency = project?.fund_currency ?? "USD";
+  const expenseTotalLabel = expenseTotals || formatMoney(fundCurrency, 0);
   const committedExpenses = useMemo(
     () =>
       (expenses.data ?? []).reduce(
@@ -554,6 +556,17 @@ function ProjectDetailPage() {
 
   const owner = project.owner_id ? peopleById.get(project.owner_id) : undefined;
   const department = departments.data?.find((item) => item.id === project.department_id);
+  const hasIdentityDetails = Boolean(
+    project.legal_name || project.project_code || department || owner,
+  );
+  const hasOperationsDetails = Boolean(
+    (locationLabel && project.location) ||
+    (category === "mine" &&
+      (project.mining_method !== "other" ||
+        project.license_status !== "unknown" ||
+        project.area_km2 !== null ||
+        project.reserve_kg !== null)),
+  );
 
   return (
     <>
@@ -934,28 +947,34 @@ function ProjectDetailPage() {
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <SummaryCard
-          icon={Banknote}
-          label="Current fund"
-          value={currentFundLabel}
-          tone="bg-stat-teal"
-        />
-        <SummaryCard
-          icon={Users}
-          label="Assigned staff"
-          value={String(assignedPeople.length)}
-          tone="bg-stat-gold"
-        />
-        <SummaryCard
-          icon={Clock3}
-          label="Work logs"
-          value={`${reports.data?.length ?? 0} · ${totalHours.toFixed(1)}h`}
-          tone="bg-stat-violet"
-        />
+        {currentFund !== null ? (
+          <SummaryCard
+            icon={Banknote}
+            label="Current fund"
+            value={currentFundLabel}
+            tone="bg-stat-teal"
+          />
+        ) : null}
+        {assignedPeople.length > 0 ? (
+          <SummaryCard
+            icon={Users}
+            label="Assigned staff"
+            value={String(assignedPeople.length)}
+            tone="bg-stat-gold"
+          />
+        ) : null}
+        {(reports.data?.length ?? 0) > 0 ? (
+          <SummaryCard
+            icon={Clock3}
+            label="Work logs"
+            value={`${reports.data?.length ?? 0} · ${totalHours.toFixed(1)}h`}
+            tone="bg-stat-violet"
+          />
+        ) : null}
         <SummaryCard
           icon={ReceiptText}
-          label="Visible expenses"
-          value={expenseTotals || "—"}
+          label="Total expenses"
+          value={expenseTotalLabel}
           tone="bg-stat-copper"
         />
       </div>
@@ -1005,9 +1024,11 @@ function ProjectDetailPage() {
                     <h2 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
                       {project.legal_name || project.name}
                     </h2>
-                    <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                      {project.description || t("No project description yet.")}
-                    </p>
+                    {project.description ? (
+                      <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                        {project.description}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
@@ -1017,77 +1038,83 @@ function ProjectDetailPage() {
             </div>
 
             <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-2">
-              <OverviewGroup icon={Building2} title="Ownership & identity">
-                <ProjectField label={legalNameLabel} value={project.legal_name || "—"} />
-                <ProjectField label="Project code" value={project.project_code || "—"} />
-                <ProjectField label="Department" value={department?.name || "—"} />
-                <ProjectField
-                  label="Owner"
-                  value={
-                    owner?.full_name ||
-                    (owner?.email ? staffLoginLabel(owner.email) : "Unknown user")
-                  }
-                />
-              </OverviewGroup>
+              {hasIdentityDetails ? (
+                <OverviewGroup icon={Building2} title="Ownership & identity">
+                  {project.legal_name ? (
+                    <ProjectField label={legalNameLabel} value={project.legal_name} />
+                  ) : null}
+                  {project.project_code ? (
+                    <ProjectField label="Project code" value={project.project_code} />
+                  ) : null}
+                  {department ? <ProjectField label="Department" value={department.name} /> : null}
+                  {owner ? (
+                    <ProjectField
+                      label="Project creator"
+                      value={owner.full_name || staffLoginLabel(owner.email)}
+                    />
+                  ) : null}
+                </OverviewGroup>
+              ) : null}
 
-              <OverviewGroup icon={MapPin} title="Operations">
-                {locationLabel ? (
-                  <ProjectField label={locationLabel} value={project.location || "—"} />
-                ) : null}
-                {category === "mine" ? (
-                  <>
+              {hasOperationsDetails ? (
+                <OverviewGroup icon={MapPin} title="Operations">
+                  {locationLabel && project.location ? (
+                    <ProjectField label={locationLabel} value={project.location} />
+                  ) : null}
+                  {category === "mine" && project.mining_method !== "other" ? (
                     <ProjectField
                       label="Mining method"
                       value={t(MINING_METHOD_LABEL[project.mining_method] ?? project.mining_method)}
                     />
+                  ) : null}
+                  {category === "mine" && project.license_status !== "unknown" ? (
                     <ProjectField
                       label="License status"
                       value={t(
                         LICENSE_STATUS_LABEL[project.license_status] ?? project.license_status,
                       )}
                     />
+                  ) : null}
+                  {category === "mine" && project.area_km2 !== null ? (
                     <ProjectField
                       label="Area"
-                      value={
-                        project.area_km2 === null
-                          ? "—"
-                          : `${Number(project.area_km2).toLocaleString()} km²`
-                      }
+                      value={`${Number(project.area_km2).toLocaleString()} km²`}
                     />
+                  ) : null}
+                  {category === "mine" && project.reserve_kg !== null ? (
                     <ProjectField
                       label="Estimated reserve"
-                      value={
-                        project.reserve_kg === null
-                          ? "—"
-                          : `${Number(project.reserve_kg).toLocaleString()} kg`
-                      }
+                      value={`${Number(project.reserve_kg).toLocaleString()} kg`}
                     />
-                  </>
-                ) : null}
-              </OverviewGroup>
+                  ) : null}
+                </OverviewGroup>
+              ) : null}
 
               <OverviewGroup icon={Banknote} title="Funding">
-                <ProjectField
-                  label="Starting fund"
-                  value={
-                    project.fund_amount === null || project.fund_amount === undefined
-                      ? "Not set"
-                      : formatMoney(fundCurrency, Number(project.fund_amount))
-                  }
-                />
-                <ProjectField
-                  label="Committed expenses"
-                  value={
-                    canViewAllExpenses ? formatMoney(fundCurrency, committedExpenses) : "Restricted"
-                  }
-                />
-                <ProjectField label="Current fund" value={currentFundLabel} />
-                <ProjectField label="Currency" value={fundCurrency} />
+                {project.fund_amount !== null ? (
+                  <>
+                    <ProjectField
+                      label="Starting fund"
+                      value={formatMoney(fundCurrency, Number(project.fund_amount))}
+                    />
+                    {canViewAllExpenses && committedExpenses > 0 ? (
+                      <ProjectField
+                        label="Committed expenses"
+                        value={formatMoney(fundCurrency, committedExpenses)}
+                      />
+                    ) : null}
+                    <ProjectField label="Current fund" value={currentFundLabel} />
+                    <ProjectField label="Currency" value={fundCurrency} />
+                  </>
+                ) : null}
+                <ProjectField label="Total expenses" value={expenseTotalLabel} />
               </OverviewGroup>
 
               <OverviewGroup icon={CalendarDays} title="Links & timeline">
-                {urlLabel ? <ProjectLinkField label={urlLabel} value={project.url} /> : null}
-                {category === "website" ? (
+                {urlLabel && project.url ? (
+                  <ProjectLinkField label={urlLabel} value={project.url} />
+                ) : null}
+                {category === "website" && project.repository_url ? (
                   <ProjectLinkField label="Git repository URL" value={project.repository_url} />
                 ) : null}
                 <ProjectField label="Created" value={formatDateTime(project.created_at)} />

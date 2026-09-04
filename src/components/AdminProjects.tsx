@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { ExternalLink, FolderKanban, Pencil, Plus } from "lucide-react";
+import { FolderKanban, Pencil, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -18,8 +17,6 @@ import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
 import { useLanguage } from "@/lib/i18n";
 import {
-  LICENSE_STATUS_LABEL,
-  MINING_METHOD_LABEL,
   PROJECT_CATEGORY_LABEL,
   PROJECT_STATUS_LABEL,
   PROJECT_STATUS_ORDER,
@@ -120,7 +117,7 @@ export function AdminProjects() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
         <p className="text-sm text-muted-foreground">
-          {t("Admins can create projects, transfer ownership and edit every project field.")}
+          {t("Select a project row to edit every field without leaving the admin workspace.")}
         </p>
         <Button type="button" onClick={() => setCreateOpen(true)}>
           <Plus />
@@ -161,168 +158,105 @@ export function AdminProjects() {
         <p className="text-sm text-muted-foreground">{t("Loading projects…")}</p>
       ) : null}
 
-      <div className="space-y-4">
-        {sortedProjects.map((project) => {
-          const owner = project.owner_id ? peopleById.get(project.owner_id) : undefined;
-          const department = project.department_id
-            ? departmentsById.get(project.department_id)
-            : undefined;
-          const memberNames = membersByProject.get(project.id) ?? [];
-          const category = project.category ?? "mine";
-          return (
-            <article
-              key={project.id}
-              className={cn(
-                "logbook-card group relative isolate cursor-pointer p-5 transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-raise",
-                project.status === "archived" && "opacity-75",
-              )}
-            >
-              <Link
-                to="/projects/$projectId"
-                params={{ projectId: project.id }}
-                aria-label={`${t("Open full project")}: ${project.name}`}
-                className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              />
-              <div className="pointer-events-none relative z-10 flex flex-wrap items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span
-                    className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground"
-                    style={project.color ? { borderLeft: `4px solid ${project.color}` } : undefined}
-                  >
-                    <FolderKanban className="size-5" aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <h2 className="text-base font-semibold group-hover:underline">
-                      {project.name}
-                    </h2>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t(PROJECT_CATEGORY_LABEL[category] ?? category)}
-                      {project.project_code ? ` · ${project.project_code}` : ""}
-                    </p>
-                  </div>
-                </div>
-                <div className="pointer-events-auto flex items-center gap-2">
-                  <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
-                    {t(PROJECT_STATUS_LABEL[project.status] ?? project.status)}
-                  </Badge>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setEditingProject(project)}
-                  >
-                    <Pencil />
-                    {t("Edit")}
-                  </Button>
-                  <Button asChild type="button" size="sm" variant="outline">
-                    <Link to="/projects/$projectId" params={{ projectId: project.id }}>
-                      <ExternalLink />
-                      {t("Manage")}
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-
-              <dl className="pointer-events-none relative z-10 mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Info
-                  label="Owner"
-                  value={
-                    owner
-                      ? [owner.full_name, staffLoginLabel(owner.email)].filter(Boolean).join(" · ")
-                      : "—"
-                  }
-                />
-                <Info label="Department" value={department?.name || "—"} />
-                <Info
-                  label="Assigned staff"
-                  value={
-                    memberNames.length ? `${memberNames.length} · ${memberNames.join(", ")}` : "0"
-                  }
-                />
-                <Info
-                  label="Starting fund"
-                  value={
-                    project.fund_amount === null
+      <div className="logbook-card overflow-x-auto">
+        <table className="w-full min-w-[900px] text-sm">
+          <thead>
+            <tr className="border-b border-border text-left">
+              <th className="px-4 py-3 font-medium">{t("Project")}</th>
+              <th className="px-4 py-3 font-medium">{t("Category")}</th>
+              <th className="px-4 py-3 font-medium">{t("Owner")}</th>
+              <th className="px-4 py-3 font-medium">{t("Department")}</th>
+              <th className="px-4 py-3 text-center font-medium">{t("Team")}</th>
+              <th className="px-4 py-3 font-medium">{t("Starting fund")}</th>
+              <th className="px-4 py-3 font-medium">{t("Status")}</th>
+              <th className="px-4 py-3 font-medium">{t("Last updated")}</th>
+              <th className="w-12 px-4 py-3">
+                <span className="sr-only">{t("Edit project")}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedProjects.map((project) => {
+              const owner = project.owner_id ? peopleById.get(project.owner_id) : undefined;
+              const department = project.department_id
+                ? departmentsById.get(project.department_id)
+                : undefined;
+              const memberNames = membersByProject.get(project.id) ?? [];
+              const category = project.category ?? "mine";
+              const openEditor = () => setEditingProject(project);
+              return (
+                <tr
+                  key={project.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${t("Edit project")}: ${project.name}`}
+                  className={cn(
+                    "cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                    project.status === "archived" && "opacity-70",
+                  )}
+                  onClick={openEditor}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    openEditor();
+                  }}
+                >
+                  <td className="px-4 py-3.5">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground"
+                        style={
+                          project.color ? { borderLeft: `3px solid ${project.color}` } : undefined
+                        }
+                      >
+                        <FolderKanban className="size-4" aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="max-w-56 truncate font-medium">{project.name}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {project.project_code || t("No code")}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5 text-muted-foreground">
+                    {t(PROJECT_CATEGORY_LABEL[category] ?? category)}
+                  </td>
+                  <td className="max-w-48 truncate px-4 py-3.5 text-muted-foreground">
+                    {owner?.full_name ||
+                      (owner?.email ? staffLoginLabel(owner.email) : t("Unknown user"))}
+                  </td>
+                  <td className="px-4 py-3.5 text-muted-foreground">{department?.name || "—"}</td>
+                  <td className="px-4 py-3.5 text-center text-muted-foreground">
+                    {memberNames.length}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3.5 text-muted-foreground">
+                    {project.fund_amount === null
                       ? t("Not set")
-                      : formatMoney(project.fund_currency, Number(project.fund_amount))
-                  }
-                />
-                <Info label="Legal name" value={project.legal_name || "—"} />
-                <Info label="Location" value={project.location || "—"} />
-                <Info
-                  label="Mining method"
-                  value={
-                    category === "mine"
-                      ? t(MINING_METHOD_LABEL[project.mining_method] ?? project.mining_method)
-                      : "—"
-                  }
-                />
-                <Info
-                  label="License status"
-                  value={
-                    category === "mine"
-                      ? t(LICENSE_STATUS_LABEL[project.license_status] ?? project.license_status)
-                      : "—"
-                  }
-                />
-                <Info
-                  label="Estimated reserve"
-                  value={
-                    project.reserve_kg === null
-                      ? "—"
-                      : `${Number(project.reserve_kg).toLocaleString()} kg`
-                  }
-                />
-                <Info
-                  label="Area"
-                  value={
-                    project.area_km2 === null
-                      ? "—"
-                      : `${Number(project.area_km2).toLocaleString()} km²`
-                  }
-                />
-                <Info label="Website URL" value={project.url || "—"} breakWords />
-                <Info label="Git repository URL" value={project.repository_url || "—"} breakWords />
-                <Info label="Project color" value={project.color || "—"} />
-                <Info label="Created" value={formatDateTime(project.created_at)} />
-                <Info label="Last updated" value={formatDateTime(project.updated_at)} />
-                <Info label="Project ID" value={project.id} breakWords />
-              </dl>
-              <div className="pointer-events-none relative z-10 mt-5 border-t border-border pt-4">
-                <p className="logbook-label">{t("Description")}</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                  {project.description || t("No project description yet.")}
-                </p>
-              </div>
-            </article>
-          );
-        })}
+                      : formatMoney(project.fund_currency, Number(project.fund_amount))}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
+                      {t(PROJECT_STATUS_LABEL[project.status] ?? project.status)}
+                    </Badge>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3.5 text-xs text-muted-foreground">
+                    {formatDateTime(project.updated_at)}
+                  </td>
+                  <td className="px-4 py-3.5 text-muted-foreground">
+                    <Pencil className="size-4" aria-hidden="true" />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
         {!projects.isLoading && !projects.error && sortedProjects.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border px-5 py-10 text-center text-sm text-muted-foreground">
+          <p className="px-5 py-10 text-center text-sm text-muted-foreground">
             {t("No projects yet — create the first one.")}
           </p>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-function Info({
-  label,
-  value,
-  breakWords = false,
-}: {
-  label: string;
-  value: string;
-  breakWords?: boolean;
-}) {
-  const { t } = useLanguage();
-  return (
-    <div>
-      <dt className="logbook-label">{t(label)}</dt>
-      <dd className={cn("mt-1 text-sm text-muted-foreground", breakWords && "break-all")}>
-        {value}
-      </dd>
     </div>
   );
 }

@@ -2,15 +2,22 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Code2,
+  EllipsisVertical,
+  ExternalLink,
   Factory,
   FolderKanban,
   Globe2,
   HardHat,
   Landmark,
+  Archive,
+  ArchiveRestore,
+  Pencil,
+  Pin,
+  PinOff,
   Pickaxe,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/AppShell";
@@ -18,6 +25,13 @@ import { ProjectEditorDialog, type ProjectEditorValue } from "@/components/Proje
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/useSession";
@@ -28,6 +42,7 @@ import {
   useProjectTaskSummary,
   useStaffDirectory,
   useVisibleReports,
+  type ProjectRow,
 } from "@/hooks/useData";
 import { hasCapability } from "@/lib/roles";
 import { todayForDateInput } from "@/lib/dates";
@@ -43,6 +58,7 @@ import { cn } from "@/lib/utils";
 import { currentReports } from "@/lib/workLogs";
 
 const MAX_AVATARS = 5;
+const PROJECT_PINS_STORAGE_KEY = "renreport.project-pins.v1";
 
 function isoDaysAgo(days: number) {
   const date = new Date();
@@ -85,6 +101,28 @@ function ProjectsPage() {
   const editable = hasCapability(permissions, "manage_projects", roles);
 
   const [open, setOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<ProjectRow | undefined>();
+  const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>([]);
+  const pinStorageKey = user ? `${PROJECT_PINS_STORAGE_KEY}:${user.id}` : null;
+
+  useEffect(() => {
+    if (!pinStorageKey) {
+      setPinnedProjectIds([]);
+      return;
+    }
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(pinStorageKey) ?? "[]");
+      setPinnedProjectIds(
+        Array.isArray(stored)
+          ? stored.filter((value): value is string => typeof value === "string")
+          : [],
+      );
+    } catch {
+      setPinnedProjectIds([]);
+    }
+  }, [pinStorageKey]);
+
+  const pinnedProjectIdSet = useMemo(() => new Set(pinnedProjectIds), [pinnedProjectIds]);
 
   const staffRestricted = roles.length === 1 && roles[0] === "staff";
   const visibleProjects = useMemo(() => {
@@ -102,10 +140,11 @@ function ProjectsPage() {
           );
     return [...listed].sort(
       (left, right) =>
+        Number(pinnedProjectIdSet.has(right.id)) - Number(pinnedProjectIdSet.has(left.id)) ||
         (PROJECT_STATUS_ORDER[left.status] ?? 9) - (PROJECT_STATUS_ORDER[right.status] ?? 9) ||
         left.name.localeCompare(right.name),
     );
-  }, [projectMembers.data, projects.data, staffRestricted, user]);
+  }, [pinnedProjectIdSet, projectMembers.data, projects.data, staffRestricted, user]);
   const peopleById = useMemo(
     () => new Map((people.data ?? []).map((person) => [person.id, person])),
     [people.data],
@@ -151,17 +190,48 @@ function ProjectsPage() {
   });
 
   const archive = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("projects").update({ status: "archived" }).eq("id", id);
+    mutationFn: async ({ id, status }: { id: string; status: "active" | "archived" }) => {
+      const { error } = await supabase.from("projects").update({ status }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      toast.success(t("Project archived"));
+    onSuccess: (_data, variables) => {
+      toast.success(t(variables.status === "archived" ? "Project archived" : "Project restored"));
       queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : t("Could not archive")),
+      toast.error(error instanceof Error ? error.message : t("Could not update project")),
   });
+
+  const update = useMutation({
+    mutationFn: async (value: ProjectEditorValue) => {
+      if (!editingProject) throw new Error(t("Choose a project to edit"));
+      const { error } = await supabase.from("projects").update(value).eq("id", editingProject.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success(t("Project updated"));
+      setEditingProject(undefined);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : t("Could not update project")),
+  });
+
+  function togglePin(projectId: string) {
+    const wasPinned = pinnedProjectIdSet.has(projectId);
+    const next = wasPinned
+      ? pinnedProjectIds.filter((id) => id !== projectId)
+      : [projectId, ...pinnedProjectIds];
+    setPinnedProjectIds(next);
+    if (pinStorageKey) {
+      try {
+        window.localStorage.setItem(pinStorageKey, JSON.stringify(next));
+      } catch {
+        // The visual pin still works for the current session when storage is unavailable.
+      }
+    }
+    toast.success(t(wasPinned ? "Project unpinned" : "Project pinned"));
+  }
 
   return (
     <>
@@ -180,6 +250,17 @@ function ProjectsPage() {
         pending={create.isPending}
         onSubmit={(value) => create.mutate(value)}
       />
+      <ProjectEditorDialog
+        open={!!editingProject && editable}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setEditingProject(undefined);
+        }}
+        project={editingProject}
+        defaultOwnerId={user?.id}
+        departments={departments.data ?? []}
+        pending={update.isPending}
+        onSubmit={(value) => update.mutate(value)}
+      />
 
       {projects.isLoading ? (
         <p className="text-sm text-muted-foreground">{t("Loading projects…")}</p>
@@ -190,6 +271,7 @@ function ProjectsPage() {
           const CategoryIcon = PROJECT_CATEGORY_ICON[projectCategory] ?? FolderKanban;
           const weekly = recentByProject.get(project.id) ?? { entries: 0, hours: 0 };
           const tasks = tasksByProject.get(project.id);
+          const isPinned = pinnedProjectIdSet.has(project.id);
           const members = (projectMembers.data ?? [])
             .filter((member) => member.project_id === project.id)
             .map((member) => peopleById.get(member.user_id))
@@ -205,7 +287,7 @@ function ProjectsPage() {
               <Link
                 to="/projects/$projectId"
                 params={{ projectId: project.id }}
-                aria-label={`Open ${project.name}`}
+                aria-label={`${t("Open project")}: ${project.name}`}
                 className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />
               <div className="pointer-events-none relative z-10 flex items-start justify-between gap-3">
@@ -214,9 +296,17 @@ function ProjectsPage() {
                     <CategoryIcon className="size-5" aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
-                    <h2 className="truncate text-sm font-semibold group-hover:underline">
-                      {project.name}
-                    </h2>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <h2 className="truncate text-sm font-semibold group-hover:underline">
+                        {project.name}
+                      </h2>
+                      {isPinned ? (
+                        <Pin
+                          className="size-3.5 shrink-0 fill-current text-primary"
+                          aria-hidden="true"
+                        />
+                      ) : null}
+                    </div>
                     <p className="logbook-label mt-1">
                       {t(PROJECT_CATEGORY_LABEL[projectCategory] ?? projectCategory)}
                       {project.project_code ? ` · ${project.project_code}` : ""}
@@ -227,17 +317,57 @@ function ProjectsPage() {
                   <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
                     {t(PROJECT_STATUS_LABEL[project.status] ?? project.status)}
                   </Badge>
-                  {editable && project.status !== "archived" ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => archive.mutate(project.id)}
-                    >
-                      {t("Archive")}
-                    </Button>
-                  ) : null}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="size-8 text-muted-foreground"
+                        aria-label={`${t("Project actions")}: ${project.name}`}
+                      >
+                        <EllipsisVertical aria-hidden="true" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-44">
+                      <DropdownMenuItem asChild>
+                        <Link to="/projects/$projectId" params={{ projectId: project.id }}>
+                          <ExternalLink />
+                          {t("Open project")}
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => togglePin(project.id)}>
+                        {isPinned ? <PinOff /> : <Pin />}
+                        {t(isPinned ? "Unpin project" : "Pin project")}
+                      </DropdownMenuItem>
+                      {editable ? (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onSelect={() => setEditingProject(project)}>
+                            <Pencil />
+                            {t("Edit project")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className={
+                              project.status === "archived"
+                                ? undefined
+                                : "text-destructive focus:text-destructive"
+                            }
+                            disabled={archive.isPending}
+                            onSelect={() =>
+                              archive.mutate({
+                                id: project.id,
+                                status: project.status === "archived" ? "active" : "archived",
+                              })
+                            }
+                          >
+                            {project.status === "archived" ? <ArchiveRestore /> : <Archive />}
+                            {t(project.status === "archived" ? "Restore project" : "Archive")}
+                          </DropdownMenuItem>
+                        </>
+                      ) : null}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
               {project.description ? (
