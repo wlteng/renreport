@@ -3,13 +3,17 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Banknote,
+  Building2,
+  CalendarDays,
   CheckCircle2,
   Circle,
   Clock3,
   ExternalLink,
   Flag,
+  FolderKanban,
   GitCommitHorizontal,
   ListTodo,
+  MapPin,
   Plus,
   ReceiptText,
   Settings2,
@@ -23,6 +27,7 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/AppShell";
 import { ExpenseDialog } from "@/components/ExpenseDialog";
+import { ProjectEditorDialog, type ProjectEditorValue } from "@/components/ProjectEditorDialog";
 import { ImageLightbox, WorkLogDialog, WorkLogImages } from "@/components/WorkLog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -63,10 +68,11 @@ import {
   useProjects,
   useStaffDirectory,
   useVisibleReports,
+  type ProjectTaskRow,
+  type StaffDirectoryRow,
 } from "@/hooks/useData";
 import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
-import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { todayForDateInput } from "@/lib/dates";
 import { deleteRecord } from "@/lib/deleteRecord";
 import { useLanguage } from "@/lib/i18n";
@@ -75,7 +81,6 @@ import {
   LICENSE_STATUS_LABEL,
   MINING_METHOD_LABEL,
   PROJECT_CATEGORY_LABEL,
-  PROJECT_CATEGORY_OPTIONS,
   PROJECT_LEGAL_NAME_LABEL,
   PROJECT_LOCATION_LABEL,
   PROJECT_STATUS_TONE,
@@ -95,7 +100,6 @@ import {
   firstValidationError,
   projectMemberSchema,
   projectMilestoneSchema,
-  projectSchema,
   projectTaskSchema,
 } from "@/lib/validation";
 
@@ -168,27 +172,13 @@ function ProjectDetailPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
-  const [settingsName, setSettingsName] = useState("");
-  const [settingsCategory, setSettingsCategory] = useState("mine");
-  const [settingsProjectCode, setSettingsProjectCode] = useState("");
-  const [settingsLegalName, setSettingsLegalName] = useState("");
-  const [settingsLocation, setSettingsLocation] = useState("");
-  const [settingsMiningMethod, setSettingsMiningMethod] = useState("other");
-  const [settingsLicenseStatus, setSettingsLicenseStatus] = useState("unknown");
-  const [settingsReserveKg, setSettingsReserveKg] = useState("");
-  const [settingsAreaKm2, setSettingsAreaKm2] = useState("");
-  const [settingsUrl, setSettingsUrl] = useState("");
-  const [settingsRepositoryUrl, setSettingsRepositoryUrl] = useState("");
-  const [settingsDepartmentId, setSettingsDepartmentId] = useState("");
-  const [settingsDescription, setSettingsDescription] = useState("");
-  const [settingsFund, setSettingsFund] = useState("");
-  const [settingsCurrency, setSettingsCurrency] = useState("USD");
   const [taskOpen, setTaskOpen] = useState(false);
-  const [taskTitle, setTaskTitle] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   const [taskAssignee, setTaskAssignee] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
+  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const [milestoneOpen, setMilestoneOpen] = useState(false);
+  const [selectedMilestoneId, setSelectedMilestoneId] = useState<string | null>(null);
   const [milestoneTitle, setMilestoneTitle] = useState("");
   const [milestoneDescription, setMilestoneDescription] = useState("");
   const [milestoneTargetDate, setMilestoneTargetDate] = useState(todayForDateInput);
@@ -198,9 +188,11 @@ function ProjectDetailPage() {
 
   const rawProject = projects.data?.find((item) => item.id === projectId);
   const staffRestricted = roles.length === 1 && roles[0] === "staff";
-  const staffAssigned = (memberships.data ?? []).some(
-    (membership) => membership.project_id === projectId && membership.user_id === user?.id,
-  );
+  const staffAssigned =
+    rawProject?.owner_id === user?.id ||
+    (memberships.data ?? []).some(
+      (membership) => membership.project_id === projectId && membership.user_id === user?.id,
+    );
   const project = rawProject && (!staffRestricted || staffAssigned) ? rawProject : undefined;
   const gitEvents = useProjectGitEvents(
     projectId,
@@ -277,6 +269,22 @@ function ProjectDetailPage() {
     () => (tasks.data ?? []).filter((task) => task.is_completed).length,
     [tasks.data],
   );
+  const openTasks = useMemo(
+    () => (tasks.data ?? []).filter((task) => !task.is_completed),
+    [tasks.data],
+  );
+  const completedTasks = useMemo(
+    () => (tasks.data ?? []).filter((task) => task.is_completed),
+    [tasks.data],
+  );
+  const selectedMilestone = useMemo(
+    () =>
+      selectedMilestoneId
+        ? ((milestones.data ?? []).find((milestone) => milestone.id === selectedMilestoneId) ??
+          null)
+        : null,
+    [milestones.data, selectedMilestoneId],
+  );
   const achievedMilestoneCount = useMemo(
     () => (milestones.data ?? []).filter((milestone) => milestone.is_achieved).length,
     [milestones.data],
@@ -298,9 +306,6 @@ function ProjectDetailPage() {
   const legalNameLabel = PROJECT_LEGAL_NAME_LABEL[category] ?? "Legal name";
   const locationLabel = PROJECT_LOCATION_LABEL[category];
   const urlLabel = PROJECT_URL_LABEL[category];
-  const settingsLegalNameLabel = PROJECT_LEGAL_NAME_LABEL[settingsCategory] ?? "Legal name";
-  const settingsLocationLabel = PROJECT_LOCATION_LABEL[settingsCategory];
-  const settingsUrlLabel = PROJECT_URL_LABEL[settingsCategory];
   const fundCurrency = project?.fund_currency ?? "USD";
   const committedExpenses = useMemo(
     () =>
@@ -383,11 +388,12 @@ function ProjectDetailPage() {
 
   const createTask = useMutation({
     mutationFn: async () => {
-      if (!user) throw new Error("Sign in again before creating a task");
+      if (!user) throw new Error(t("Sign in again before creating a task"));
+      const description = taskDescription.trim();
       const parsed = projectTaskSchema.safeParse({
         project_id: projectId,
-        title: taskTitle,
-        description: taskDescription,
+        title: description.slice(0, 160),
+        description,
         assignee_id: taskAssignee,
         due_date: taskDueDate,
       });
@@ -402,16 +408,15 @@ function ProjectDetailPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Task added");
+      toast.success(t("Task added"));
       setTaskOpen(false);
-      setTaskTitle("");
       setTaskDescription("");
       setTaskAssignee("");
       setTaskDueDate("");
       queryClient.invalidateQueries({ queryKey: ["project-tasks", projectId] });
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : "Could not add the task"),
+      toast.error(error instanceof Error ? error.message : t("Could not add the task")),
   });
 
   const toggleTask = useMutation({
@@ -423,16 +428,36 @@ function ProjectDetailPage() {
       if (error) throw error;
     },
     onSuccess: (_data, variables) => {
-      toast.success(variables.isCompleted ? "Task completed" : "Task reopened");
+      toast.success(t(variables.isCompleted ? "Task completed" : "Task reopened"));
       queryClient.invalidateQueries({ queryKey: ["project-tasks", projectId] });
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : "Could not update the task"),
+      toast.error(error instanceof Error ? error.message : t("Could not update the task")),
+  });
+
+  const deleteTask = useMutation({
+    mutationFn: async () => {
+      if (!roles.includes("admin")) throw new Error(t("Only admins can delete to-dos"));
+      if (!deleteTaskId) throw new Error(t("Choose a to-do to delete"));
+      const { error } = await supabase
+        .from("project_tasks")
+        .delete()
+        .eq("id", deleteTaskId)
+        .eq("project_id", projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success(t("To-do deleted"));
+      setDeleteTaskId(null);
+      queryClient.invalidateQueries({ queryKey: ["project-tasks", projectId] });
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : t("Could not delete the to-do")),
   });
 
   const createMilestone = useMutation({
     mutationFn: async () => {
-      if (!user) throw new Error("Sign in again before creating a milestone");
+      if (!user) throw new Error(t("Sign in again before creating a milestone"));
       const parsed = projectMilestoneSchema.safeParse({
         project_id: projectId,
         title: milestoneTitle,
@@ -449,7 +474,7 @@ function ProjectDetailPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Milestone added");
+      toast.success(t("Milestone added"));
       setMilestoneOpen(false);
       setMilestoneTitle("");
       setMilestoneDescription("");
@@ -457,7 +482,7 @@ function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["project-milestones", projectId] });
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : "Could not add the milestone"),
+      toast.error(error instanceof Error ? error.message : t("Could not add the milestone")),
   });
 
   const toggleMilestone = useMutation({
@@ -469,54 +494,16 @@ function ProjectDetailPage() {
       if (error) throw error;
     },
     onSuccess: (_data, variables) => {
-      toast.success(variables.isAchieved ? "Milestone achieved" : "Milestone reopened");
+      toast.success(t(variables.isAchieved ? "Milestone achieved" : "Milestone reopened"));
       queryClient.invalidateQueries({ queryKey: ["project-milestones", projectId] });
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : "Could not update the milestone"),
+      toast.error(error instanceof Error ? error.message : t("Could not update the milestone")),
   });
 
   const updateSettings = useMutation({
-    mutationFn: async () => {
-      const parsed = projectSchema.safeParse({
-        name: settingsName,
-        category: settingsCategory,
-        project_code: settingsProjectCode,
-        legal_name: settingsLegalName,
-        location: settingsLocation,
-        mining_method: settingsMiningMethod,
-        license_status: settingsLicenseStatus,
-        reserve_kg: settingsReserveKg,
-        area_km2: settingsAreaKm2,
-        url: settingsUrl,
-        repository_url: settingsRepositoryUrl,
-        department_id: settingsDepartmentId,
-        description: settingsDescription,
-        fund_amount: settingsFund,
-        fund_currency: settingsCurrency,
-      });
-      if (!parsed.success) throw new Error(firstValidationError(parsed.error));
-      const input = parsed.data;
-      const { error } = await supabase
-        .from("projects")
-        .update({
-          name: input.name,
-          category: input.category,
-          project_code: input.project_code ?? null,
-          legal_name: input.legal_name ?? null,
-          location: PROJECT_LOCATION_LABEL[input.category] ? (input.location ?? null) : null,
-          mining_method: input.category === "mine" ? input.mining_method : "other",
-          license_status: input.category === "mine" ? input.license_status : "unknown",
-          reserve_kg: input.category === "mine" ? (input.reserve_kg ?? null) : null,
-          area_km2: input.category === "mine" ? (input.area_km2 ?? null) : null,
-          url: PROJECT_URL_LABEL[input.category] ? (input.url ?? null) : null,
-          repository_url: input.category === "website" ? (input.repository_url ?? null) : null,
-          department_id: input.department_id ?? null,
-          description: input.description ?? null,
-          fund_amount: input.fund_amount ?? null,
-          fund_currency: input.fund_currency,
-        })
-        .eq("id", projectId);
+    mutationFn: async (value: ProjectEditorValue) => {
+      const { error } = await supabase.from("projects").update(value).eq("id", projectId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -527,26 +514,6 @@ function ProjectDetailPage() {
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Could not update project")),
   });
-
-  function openSettings() {
-    if (!project) return;
-    setSettingsName(project.name);
-    setSettingsCategory(project.category ?? "mine");
-    setSettingsProjectCode(project.project_code ?? "");
-    setSettingsLegalName(project.legal_name ?? "");
-    setSettingsLocation(project.location ?? "");
-    setSettingsMiningMethod(project.mining_method ?? "other");
-    setSettingsLicenseStatus(project.license_status ?? "unknown");
-    setSettingsReserveKg(project.reserve_kg === null ? "" : String(project.reserve_kg ?? ""));
-    setSettingsAreaKm2(project.area_km2 === null ? "" : String(project.area_km2 ?? ""));
-    setSettingsUrl(project.url ?? "");
-    setSettingsRepositoryUrl(project.repository_url ?? "");
-    setSettingsDepartmentId(project.department_id ?? "");
-    setSettingsDescription(project.description ?? "");
-    setSettingsFund(project.fund_amount === null ? "" : String(project.fund_amount ?? ""));
-    setSettingsCurrency(project.fund_currency ?? "USD");
-    setSettingsOpen(true);
-  }
 
   function openMilestoneDialog() {
     setMilestoneTargetDate(todayForDateInput());
@@ -602,7 +569,12 @@ function ProjectDetailPage() {
         action={
           <div className="flex items-center gap-2">
             {canManageProject ? (
-              <Button type="button" size="sm" variant="outline" onClick={openSettings}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setSettingsOpen(true)}
+              >
                 <Settings2 />
                 {t("Edit project")}
               </Button>
@@ -667,220 +639,17 @@ function ProjectDetailPage() {
       />
       <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
 
-      <Dialog open={settingsOpen && canManageProject} onOpenChange={setSettingsOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{t("Edit project")}</DialogTitle>
-            <DialogDescription>
-              {t("Update the project details, category and starting fund.")}
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            className="space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              updateSettings.mutate();
-            }}
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Project name" id="settings-name">
-                <Input
-                  id="settings-name"
-                  value={settingsName}
-                  onChange={(event) => setSettingsName(event.target.value)}
-                />
-              </Field>
-              <Field label="Category" id="settings-category">
-                <select
-                  id="settings-category"
-                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                  value={settingsCategory}
-                  onChange={(event) => setSettingsCategory(event.target.value)}
-                >
-                  {PROJECT_CATEGORY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {t(option.label)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Project code" id="settings-project-code">
-                <Input
-                  id="settings-project-code"
-                  value={settingsProjectCode}
-                  onChange={(event) => setSettingsProjectCode(event.target.value)}
-                />
-              </Field>
-              <Field label={settingsLegalNameLabel} id="settings-legal-name">
-                <Input
-                  id="settings-legal-name"
-                  value={settingsLegalName}
-                  onChange={(event) => setSettingsLegalName(event.target.value)}
-                />
-              </Field>
-              {settingsLocationLabel ? (
-                <Field label={settingsLocationLabel} id="settings-location">
-                  <Input
-                    id="settings-location"
-                    value={settingsLocation}
-                    onChange={(event) => setSettingsLocation(event.target.value)}
-                  />
-                </Field>
-              ) : null}
-              {settingsCategory === "mine" ? (
-                <>
-                  <Field label="Mining method" id="settings-mining-method">
-                    <select
-                      id="settings-mining-method"
-                      className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                      value={settingsMiningMethod}
-                      onChange={(event) => setSettingsMiningMethod(event.target.value)}
-                    >
-                      {Object.entries(MINING_METHOD_LABEL).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {t(label)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="License status" id="settings-license-status">
-                    <select
-                      id="settings-license-status"
-                      className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                      value={settingsLicenseStatus}
-                      onChange={(event) => setSettingsLicenseStatus(event.target.value)}
-                    >
-                      {Object.entries(LICENSE_STATUS_LABEL).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {t(label)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Estimated reserve (kg)" id="settings-reserve">
-                    <Input
-                      id="settings-reserve"
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      value={settingsReserveKg}
-                      onChange={(event) => setSettingsReserveKg(event.target.value)}
-                    />
-                  </Field>
-                  <Field label="Area (km²)" id="settings-area">
-                    <Input
-                      id="settings-area"
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      value={settingsAreaKm2}
-                      onChange={(event) => setSettingsAreaKm2(event.target.value)}
-                    />
-                  </Field>
-                </>
-              ) : null}
-              {settingsUrlLabel ? (
-                <Field label={settingsUrlLabel} id="settings-project-url">
-                  <Input
-                    id="settings-project-url"
-                    type="url"
-                    inputMode="url"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    value={settingsUrl}
-                    placeholder="https://example.com"
-                    onChange={(event) => setSettingsUrl(event.target.value)}
-                  />
-                </Field>
-              ) : null}
-              {settingsCategory === "website" ? (
-                <Field label="Git repository URL" id="settings-repository-url">
-                  <Input
-                    id="settings-repository-url"
-                    type="url"
-                    inputMode="url"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    value={settingsRepositoryUrl}
-                    placeholder="https://github.com/owner/repository"
-                    onChange={(event) => setSettingsRepositoryUrl(event.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t("Public GitHub repositories only. Commits appear in project Activity.")}
-                  </p>
-                </Field>
-              ) : null}
-              <Field label="Department" id="settings-department">
-                <select
-                  id="settings-department"
-                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                  value={settingsDepartmentId}
-                  onChange={(event) => setSettingsDepartmentId(event.target.value)}
-                >
-                  <option value="">{t("None")}</option>
-                  {(departments.data ?? []).map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Starting fund" id="settings-fund">
-                <Input
-                  id="settings-fund"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={settingsFund}
-                  placeholder="Not set"
-                  onChange={(event) => setSettingsFund(event.target.value)}
-                />
-              </Field>
-              <Field label="Currency" id="settings-currency">
-                <select
-                  id="settings-currency"
-                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                  value={settingsCurrency}
-                  onChange={(event) => setSettingsCurrency(event.target.value)}
-                >
-                  {CURRENCY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {t(option.label)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <Field label="Description" id="settings-description">
-              <Textarea
-                id="settings-description"
-                rows={3}
-                value={settingsDescription}
-                onChange={(event) => setSettingsDescription(event.target.value)}
-              />
-            </Field>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {t(
-                "Current fund equals the starting fund minus non-rejected expenses in this currency. Expenses in other currencies are listed but are not converted.",
-              )}
-            </p>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="outline" className="flex-1 sm:flex-none">
-                  {t("Cancel")}
-                </Button>
-              </DialogClose>
-              <Button
-                type="submit"
-                className="flex-1 sm:flex-none"
-                disabled={updateSettings.isPending}
-              >
-                {updateSettings.isPending ? t("Saving…") : t("Save project")}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <ProjectEditorDialog
+        open={settingsOpen && canManageProject}
+        onOpenChange={setSettingsOpen}
+        project={project}
+        defaultOwnerId={user?.id}
+        departments={departments.data ?? []}
+        people={people.data ?? []}
+        showAdminFields={roles.includes("admin")}
+        pending={updateSettings.isPending}
+        onSubmit={(value) => updateSettings.mutate(value)}
+      />
 
       <Dialog open={taskOpen && canManageProject} onOpenChange={setTaskOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -897,21 +666,13 @@ function ProjectDetailPage() {
               createTask.mutate();
             }}
           >
-            <Field label="Task title" id="task-title">
-              <Input
-                id="task-title"
-                value={taskTitle}
-                maxLength={160}
-                autoFocus
-                onChange={(event) => setTaskTitle(event.target.value)}
-              />
-            </Field>
-            <Field label="Details" id="task-description">
+            <Field label="To-do description" id="task-description">
               <Textarea
                 id="task-description"
                 value={taskDescription}
                 maxLength={2000}
-                rows={4}
+                rows={5}
+                autoFocus
                 onChange={(event) => setTaskDescription(event.target.value)}
               />
             </Field>
@@ -919,7 +680,7 @@ function ProjectDetailPage() {
               <Field label="Assign to" id="task-assignee">
                 <select
                   id="task-assignee"
-                  className="h-10 w-full rounded-md border border-input bg-card px-3 pr-10 text-sm"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 pr-10 text-base sm:text-sm"
                   value={taskAssignee}
                   onChange={(event) => setTaskAssignee(event.target.value)}
                 >
@@ -1006,6 +767,99 @@ function ProjectDetailPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={!!deleteTaskId && roles.includes("admin")}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTaskId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("Delete this to-do?")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("This permanently removes the to-do. This cannot be undone.")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteTask.isPending}>{t("Cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteTask.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                deleteTask.mutate();
+              }}
+            >
+              {deleteTask.isPending ? t("Deleting…") : t("Delete to-do")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={!!selectedMilestone}
+        onOpenChange={(open) => {
+          if (!open) setSelectedMilestoneId(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          {selectedMilestone ? (
+            <>
+              <DialogHeader>
+                <div className="mb-2 flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  {selectedMilestone.is_achieved ? (
+                    <Trophy className="size-5" aria-hidden="true" />
+                  ) : (
+                    <Flag className="size-5" aria-hidden="true" />
+                  )}
+                </div>
+                <DialogTitle>{selectedMilestone.title}</DialogTitle>
+                <DialogDescription>
+                  {t(selectedMilestone.is_achieved ? "Achieved milestone" : "Milestone target")}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                  {selectedMilestone.description || t("No milestone details provided.")}
+                </p>
+                <div className="rounded-xl bg-muted/60 p-4">
+                  <p className="logbook-label">
+                    {t(selectedMilestone.is_achieved ? "Achieved date" : "Target date")}
+                  </p>
+                  <p className="mt-1 text-sm font-medium">
+                    {selectedMilestone.is_achieved && selectedMilestone.achieved_at
+                      ? formatDate(selectedMilestone.achieved_at)
+                      : selectedMilestone.target_date
+                        ? formatDate(selectedMilestone.target_date)
+                        : t("No target date")}
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                {canManageProject ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={toggleMilestone.isPending}
+                    onClick={() =>
+                      toggleMilestone.mutate({
+                        id: selectedMilestone.id,
+                        isAchieved: !selectedMilestone.is_achieved,
+                      })
+                    }
+                  >
+                    {t(selectedMilestone.is_achieved ? "Reopen" : "Mark achieved")}
+                  </Button>
+                ) : null}
+                <DialogClose asChild>
+                  <Button type="button">{t("Done")}</Button>
+                </DialogClose>
+              </DialogFooter>
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -1126,21 +980,46 @@ function ProjectDetailPage() {
         </TabsList>
 
         <TabsContent value="overview">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Project overview")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
-                <ProjectField
-                  label="Category"
-                  value={t(PROJECT_CATEGORY_LABEL[category] ?? category)}
-                />
+          <div className="overflow-hidden rounded-2xl bg-card shadow-sm">
+            <div className="relative overflow-hidden bg-gradient-to-br from-primary/15 via-card to-stat-gold/60 p-6 sm:p-8">
+              <div
+                className="absolute inset-x-0 top-0 h-1"
+                style={{ backgroundColor: project.color || "hsl(var(--primary))" }}
+              />
+              <div className="flex flex-wrap items-start justify-between gap-5">
+                <div className="flex min-w-0 items-start gap-4">
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+                    <FolderKanban className="size-6" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">
+                        {t(PROJECT_CATEGORY_LABEL[category] ?? category)}
+                      </Badge>
+                      {project.project_code ? (
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {project.project_code}
+                        </span>
+                      ) : null}
+                    </div>
+                    <h2 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
+                      {project.legal_name || project.name}
+                    </h2>
+                    <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                      {project.description || t("No project description yet.")}
+                    </p>
+                  </div>
+                </div>
+                <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
+                  {t(STATUS_LABEL[project.status] ?? project.status)}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-2">
+              <OverviewGroup icon={Building2} title="Ownership & identity">
                 <ProjectField label={legalNameLabel} value={project.legal_name || "—"} />
                 <ProjectField label="Project code" value={project.project_code || "—"} />
-                {locationLabel ? (
-                  <ProjectField label={locationLabel} value={project.location || "—"} />
-                ) : null}
                 <ProjectField label="Department" value={department?.name || "—"} />
                 <ProjectField
                   label="Owner"
@@ -1149,6 +1028,12 @@ function ProjectDetailPage() {
                     (owner?.email ? staffLoginLabel(owner.email) : "Unknown user")
                   }
                 />
+              </OverviewGroup>
+
+              <OverviewGroup icon={MapPin} title="Operations">
+                {locationLabel ? (
+                  <ProjectField label={locationLabel} value={project.location || "—"} />
+                ) : null}
                 {category === "mine" ? (
                   <>
                     <ProjectField
@@ -1179,44 +1064,9 @@ function ProjectDetailPage() {
                     />
                   </>
                 ) : null}
-                {urlLabel ? (
-                  <div>
-                    <dt className="logbook-label">{t(urlLabel)}</dt>
-                    <dd className="mt-1 text-sm text-muted-foreground">
-                      {project.url ? (
-                        <a
-                          href={project.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="break-all underline underline-offset-4 hover:text-foreground"
-                        >
-                          {project.url}
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </dd>
-                  </div>
-                ) : null}
-                {category === "website" ? (
-                  <div>
-                    <dt className="logbook-label">{t("Git repository URL")}</dt>
-                    <dd className="mt-1 text-sm text-muted-foreground">
-                      {project.repository_url ? (
-                        <a
-                          href={project.repository_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="break-all underline underline-offset-4 hover:text-foreground"
-                        >
-                          {project.repository_url}
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </dd>
-                  </div>
-                ) : null}
+              </OverviewGroup>
+
+              <OverviewGroup icon={Banknote} title="Funding">
                 <ProjectField
                   label="Starting fund"
                   value={
@@ -1231,220 +1081,168 @@ function ProjectDetailPage() {
                     canViewAllExpenses ? formatMoney(fundCurrency, committedExpenses) : "Restricted"
                   }
                 />
+                <ProjectField label="Current fund" value={currentFundLabel} />
+                <ProjectField label="Currency" value={fundCurrency} />
+              </OverviewGroup>
+
+              <OverviewGroup icon={CalendarDays} title="Links & timeline">
+                {urlLabel ? <ProjectLinkField label={urlLabel} value={project.url} /> : null}
+                {category === "website" ? (
+                  <ProjectLinkField label="Git repository URL" value={project.repository_url} />
+                ) : null}
                 <ProjectField label="Created" value={formatDateTime(project.created_at)} />
                 <ProjectField label="Last updated" value={formatDateTime(project.updated_at)} />
-              </dl>
-              <div className="mt-6 border-t border-border pt-5">
-                <p className="logbook-label">{t("Description")}</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                  {project.description || t("No project description yet.")}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+              </OverviewGroup>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="progress" className="space-y-4">
-          <Card>
-            <CardContent className="p-5">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <p className="logbook-label">{t("To-do progress")}</p>
-                  <p className="mt-1 text-2xl font-semibold">
-                    {taskProgress}% {t("complete")}
-                  </p>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {language === "zh"
-                    ? `已完成 ${completedTaskCount}/${tasks.data?.length ?? 0} 项任务 · 已达成 ${achievedMilestoneCount}/${milestones.data?.length ?? 0} 个里程碑`
-                    : `${completedTaskCount} of ${tasks.data?.length ?? 0} tasks completed · ${achievedMilestoneCount} of ${milestones.data?.length ?? 0} milestones achieved`}
+          <div className="rounded-2xl bg-card p-5 shadow-sm">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="logbook-label">{t("To-do progress")}</p>
+                <p className="mt-1 text-2xl font-semibold">
+                  {taskProgress}% {t("complete")}
                 </p>
               </div>
-              <Progress value={taskProgress} className="mt-4" aria-label="Project task progress" />
-            </CardContent>
-          </Card>
+              <p className="text-sm text-muted-foreground">
+                {language === "zh"
+                  ? `已完成 ${completedTaskCount}/${tasks.data?.length ?? 0} 项任务 · 已达成 ${achievedMilestoneCount}/${milestones.data?.length ?? 0} 个里程碑`
+                  : `${completedTaskCount} of ${tasks.data?.length ?? 0} tasks completed · ${achievedMilestoneCount} of ${milestones.data?.length ?? 0} milestones achieved`}
+              </p>
+            </div>
+            <Progress
+              value={taskProgress}
+              className="mt-4"
+              aria-label={t("Project task progress")}
+            />
+          </div>
 
           <div className="grid items-start gap-4 xl:grid-cols-2">
-            <Card>
-              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-                <CardTitle className="flex items-center gap-2">
+            <section className="rounded-2xl bg-card p-5 shadow-sm">
+              <div className="flex flex-row flex-wrap items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2 text-base font-semibold">
                   <ListTodo className="size-5" />
                   {t("To-do list")}
-                </CardTitle>
+                </h2>
                 {canManageProject ? (
                   <Button type="button" size="sm" onClick={() => setTaskOpen(true)}>
                     <Plus />
                     {t("Add to-do")}
                   </Button>
                 ) : null}
-              </CardHeader>
-              <CardContent className="space-y-3">
+              </div>
+              <div className="mt-4">
                 {tasks.error ? (
                   <InlineError message={progressErrorMessage(tasks.error, "to-do list")} />
                 ) : null}
-                {(tasks.data ?? []).map((task) => {
-                  const assignee = task.assignee_id ? peopleById.get(task.assignee_id) : undefined;
-                  const canToggle = canManageProject || task.assignee_id === user?.id;
-                  return (
-                    <article
-                      key={task.id}
-                      className="flex items-start gap-3 rounded-xl border border-border p-4"
-                    >
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="-ml-2 -mt-2 shrink-0"
-                        aria-label={task.is_completed ? "Reopen task" : "Complete task"}
-                        title={
-                          canToggle
-                            ? task.is_completed
-                              ? "Reopen task"
-                              : "Complete task"
-                            : "Only the assignee or a project manager can change this task"
-                        }
-                        disabled={!canToggle || toggleTask.isPending}
-                        onClick={() =>
-                          toggleTask.mutate({ id: task.id, isCompleted: !task.is_completed })
-                        }
-                      >
-                        {task.is_completed ? <CheckCircle2 className="text-primary" /> : <Circle />}
-                      </Button>
-                      <div className="min-w-0 flex-1">
-                        <h3
-                          className={
-                            task.is_completed
-                              ? "text-sm font-medium text-muted-foreground line-through"
-                              : "text-sm font-medium"
-                          }
-                        >
-                          {task.title}
-                        </h3>
-                        {task.description ? (
-                          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                            {task.description}
-                          </p>
-                        ) : null}
-                        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          <span>
-                            {assignee
-                              ? language === "zh"
-                                ? `已分配给 ${assignee.full_name || staffLoginLabel(assignee.email)}`
-                                : `Assigned to ${assignee.full_name || staffLoginLabel(assignee.email)}`
-                              : t("Unassigned")}
-                          </span>
-                          {task.due_date ? (
-                            <span>
-                              {language === "zh" ? "截止" : "Due"} {formatDate(task.due_date)}
-                            </span>
-                          ) : null}
-                          {task.completed_at ? (
-                            <span>
-                              {t("Completed")} {formatDate(task.completed_at)}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
                 {tasks.isLoading ? (
                   <p className="text-sm text-muted-foreground">{t("Loading to-dos…")}</p>
                 ) : null}
-                {!tasks.isLoading && !tasks.error && (tasks.data ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{t("No project to-dos yet.")}</p>
+                {!tasks.isLoading && !tasks.error ? (
+                  <Tabs defaultValue="open" className="space-y-4">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="open">
+                        {t("To do")} ({openTasks.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="completed">
+                        {t("Completed")} ({completedTasks.length})
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="open">
+                      <ProjectTaskList
+                        items={openTasks}
+                        peopleById={peopleById}
+                        userId={user?.id}
+                        canManage={canManageProject}
+                        canDelete={roles.includes("admin")}
+                        pending={toggleTask.isPending || deleteTask.isPending}
+                        emptyMessage="No open to-dos."
+                        onToggle={(task) =>
+                          toggleTask.mutate({ id: task.id, isCompleted: !task.is_completed })
+                        }
+                        onDelete={setDeleteTaskId}
+                      />
+                    </TabsContent>
+                    <TabsContent value="completed">
+                      <ProjectTaskList
+                        items={completedTasks}
+                        peopleById={peopleById}
+                        userId={user?.id}
+                        canManage={canManageProject}
+                        canDelete={roles.includes("admin")}
+                        pending={toggleTask.isPending || deleteTask.isPending}
+                        emptyMessage="No completed to-dos."
+                        onToggle={(task) =>
+                          toggleTask.mutate({ id: task.id, isCompleted: !task.is_completed })
+                        }
+                        onDelete={setDeleteTaskId}
+                      />
+                    </TabsContent>
+                  </Tabs>
                 ) : null}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
 
-            <Card>
-              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-                <CardTitle className="flex items-center gap-2">
+            <section className="rounded-2xl bg-card p-5 shadow-sm">
+              <div className="flex flex-row flex-wrap items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2 text-base font-semibold">
                   <Flag className="size-5" />
                   {t("Achievement milestones")}
-                </CardTitle>
+                </h2>
                 {canManageProject ? (
                   <Button type="button" size="sm" variant="outline" onClick={openMilestoneDialog}>
                     <Plus />
                     {t("Add milestone")}
                   </Button>
                 ) : null}
-              </CardHeader>
-              <CardContent className="space-y-3">
+              </div>
+              <div className="mt-4">
                 {milestones.error ? (
                   <InlineError
                     message={progressErrorMessage(milestones.error, "achievement milestones")}
                   />
                 ) : null}
-                {(milestones.data ?? []).map((milestone) => (
-                  <article key={milestone.id} className="rounded-xl border border-border p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <div
-                          className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${
-                            milestone.is_achieved
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-secondary text-secondary-foreground"
-                          }`}
-                        >
-                          {milestone.is_achieved ? (
-                            <Trophy className="size-4" />
-                          ) : (
-                            <Flag className="size-4" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="text-sm font-medium">{milestone.title}</h3>
-                          {milestone.description ? (
-                            <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                              {milestone.description}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                      <Badge variant={milestone.is_achieved ? "default" : "outline"}>
-                        {t(milestone.is_achieved ? "Achieved" : "Target")}
-                      </Badge>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-                      <p className="text-xs text-muted-foreground">
-                        {milestone.is_achieved && milestone.achieved_at
-                          ? `${t("Achieved")} ${formatDate(milestone.achieved_at)}`
-                          : milestone.target_date
-                            ? `${t("Target")} ${formatDate(milestone.target_date)}`
-                            : t("No target date")}
-                      </p>
-                      {canManageProject ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          disabled={toggleMilestone.isPending}
-                          onClick={() =>
-                            toggleMilestone.mutate({
-                              id: milestone.id,
-                              isAchieved: !milestone.is_achieved,
-                            })
-                          }
-                        >
-                          {t(milestone.is_achieved ? "Reopen" : "Mark achieved")}
-                        </Button>
-                      ) : null}
-                    </div>
-                  </article>
-                ))}
+                <div className="space-y-1">
+                  {(milestones.data ?? []).map((milestone) => (
+                    <button
+                      key={milestone.id}
+                      type="button"
+                      className="flex w-full items-center gap-3 py-3 text-left transition-colors first:pt-0 last:pb-0 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => setSelectedMilestoneId(milestone.id)}
+                    >
+                      <span
+                        className={`flex size-9 shrink-0 items-center justify-center rounded-full ${
+                          milestone.is_achieved
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {milestone.is_achieved ? (
+                          <Trophy className="size-4" aria-hidden="true" />
+                        ) : (
+                          <Flag className="size-4" aria-hidden="true" />
+                        )}
+                      </span>
+                      <span className="min-w-0 truncate text-sm font-medium">
+                        {milestone.title}
+                      </span>
+                    </button>
+                  ))}
+                </div>
                 {milestones.isLoading ? (
-                  <p className="text-sm text-muted-foreground">{t("Loading milestones…")}</p>
+                  <p className="py-3 text-sm text-muted-foreground">{t("Loading milestones…")}</p>
                 ) : null}
                 {!milestones.isLoading &&
                 !milestones.error &&
                 (milestones.data ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="py-3 text-sm text-muted-foreground">
                     {t("No achievement milestones yet.")}
                   </p>
                 ) : null}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           </div>
         </TabsContent>
 
@@ -1738,6 +1536,154 @@ function ProjectField({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="logbook-label">{t(label)}</dt>
       <dd className="mt-1 text-sm text-muted-foreground">{t(value)}</dd>
+    </div>
+  );
+}
+
+function ProjectLinkField({ label, value }: { label: string; value: string | null }) {
+  const { t } = useLanguage();
+  return (
+    <div>
+      <dt className="logbook-label">{t(label)}</dt>
+      <dd className="mt-1 text-sm text-muted-foreground">
+        {value ? (
+          <a
+            href={value}
+            target="_blank"
+            rel="noreferrer"
+            className="break-all underline underline-offset-4 hover:text-foreground"
+          >
+            {value}
+          </a>
+        ) : (
+          "—"
+        )}
+      </dd>
+    </div>
+  );
+}
+
+function OverviewGroup({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: typeof Users;
+  title: string;
+  children: ReactNode;
+}) {
+  const { t } = useLanguage();
+  return (
+    <section className="rounded-2xl bg-muted/45 p-5">
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <span className="flex size-8 items-center justify-center rounded-lg bg-card text-primary shadow-sm">
+          <Icon className="size-4" aria-hidden="true" />
+        </span>
+        {t(title)}
+      </h3>
+      <dl className="mt-5 grid gap-x-5 gap-y-4 sm:grid-cols-2">{children}</dl>
+    </section>
+  );
+}
+
+function ProjectTaskList({
+  items,
+  peopleById,
+  userId,
+  canManage,
+  canDelete,
+  pending,
+  emptyMessage,
+  onToggle,
+  onDelete,
+}: {
+  items: ProjectTaskRow[];
+  peopleById: Map<string, StaffDirectoryRow>;
+  userId: string | undefined;
+  canManage: boolean;
+  canDelete: boolean;
+  pending: boolean;
+  emptyMessage: string;
+  onToggle: (task: ProjectTaskRow) => void;
+  onDelete: (taskId: string) => void;
+}) {
+  const { language, t } = useLanguage();
+
+  if (items.length === 0) {
+    return <p className="py-3 text-sm text-muted-foreground">{t(emptyMessage)}</p>;
+  }
+
+  return (
+    <div className="space-y-1">
+      {items.map((task) => {
+        const assignee = task.assignee_id ? peopleById.get(task.assignee_id) : undefined;
+        const canToggle = canManage || task.assignee_id === userId;
+        const actionLabel = task.is_completed ? t("Reopen task") : t("Complete task");
+        return (
+          <article key={task.id} className="flex items-start gap-2 py-3 first:pt-0 last:pb-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="-ml-2 -mt-1 shrink-0"
+              aria-label={actionLabel}
+              title={
+                canToggle
+                  ? actionLabel
+                  : t("Only the assignee or a project manager can change this task")
+              }
+              disabled={!canToggle || pending}
+              onClick={() => onToggle(task)}
+            >
+              {task.is_completed ? <CheckCircle2 className="text-primary" /> : <Circle />}
+            </Button>
+            <div className="min-w-0 flex-1">
+              <p
+                className={
+                  task.is_completed
+                    ? "whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground line-through"
+                    : "whitespace-pre-wrap text-sm leading-relaxed"
+                }
+              >
+                {task.description || task.title}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span>
+                  {assignee
+                    ? language === "zh"
+                      ? `已分配给 ${assignee.full_name || staffLoginLabel(assignee.email)}`
+                      : `Assigned to ${assignee.full_name || staffLoginLabel(assignee.email)}`
+                    : t("Unassigned")}
+                </span>
+                {task.due_date ? (
+                  <span>
+                    {language === "zh" ? "截止" : "Due"} {formatDate(task.due_date)}
+                  </span>
+                ) : null}
+                {task.completed_at ? (
+                  <span>
+                    {t("Completed")} {formatDate(task.completed_at)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            {canDelete ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="-mr-2 -mt-1 shrink-0 text-muted-foreground hover:text-destructive"
+                aria-label={t("Delete to-do")}
+                title={t("Delete to-do")}
+                disabled={pending}
+                onClick={() => onDelete(task.id)}
+              >
+                <Trash2 />
+              </Button>
+            ) : null}
+          </article>
+        );
+      })}
     </div>
   );
 }

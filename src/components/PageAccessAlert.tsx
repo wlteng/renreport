@@ -2,7 +2,7 @@ import { useLocation } from "@tanstack/react-router";
 import { ShieldCheck } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { roleHasPermission, useRolePermissions } from "@/hooks/useData";
+import { roleHasPermission, useRolePermissions, type RolePermissionRow } from "@/hooks/useData";
 import { useLanguage } from "@/lib/i18n";
 import {
   defaultPermissionsFor,
@@ -20,14 +20,32 @@ function pageCapability(pathname: string): PermissionKey | null {
 
 type AccessRule = { roles: AppRole[]; detail: string };
 
-function pageScope(pathname: string): AccessRule[] {
+function rolesWithCapability(
+  rows: RolePermissionRow[] | undefined,
+  capability: PermissionKey,
+): AppRole[] {
+  return ROLE_ORDER.filter((role) =>
+    rows
+      ? roleHasPermission(rows, role, capability)
+      : defaultPermissionsFor([role]).includes(capability),
+  );
+}
+
+function pageScope(
+  pathname: string,
+  rolePermissions: RolePermissionRow[] | undefined,
+): AccessRule[] {
   if (pathname === "/projects" || pathname.startsWith("/projects/")) {
     return [
-      { roles: ["staff"], detail: "See only projects assigned to them." },
+      { roles: ["staff"], detail: "See only projects assigned to or owned by them." },
       { roles: ["admin", "boss", "manager"], detail: "See all projects." },
       {
+        roles: rolesWithCapability(rolePermissions, "manage_projects"),
+        detail: "Can create and edit every project.",
+      },
+      {
         roles: ["admin"],
-        detail: "Can edit every project and manage project staff assignments.",
+        detail: "Can transfer project ownership and manage every staff assignment.",
       },
     ];
   }
@@ -76,15 +94,11 @@ export function PageAccessAlert({ adminOnly = false }: { adminOnly?: boolean }) 
   const capability = adminOnly ? null : pageCapability(location.pathname);
   const scope: AccessRule[] = adminOnly
     ? [{ roles: ["admin"], detail: "Only admins can use this workspace." }]
-    : pageScope(location.pathname);
+    : pageScope(location.pathname, rolePermissions.data);
   const roles: AppRole[] = adminOnly
     ? ["admin"]
     : capability
-      ? ROLE_ORDER.filter((role) =>
-          rolePermissions.data
-            ? roleHasPermission(rolePermissions.data, role, capability)
-            : defaultPermissionsFor([role]).includes(capability),
-        )
+      ? rolesWithCapability(rolePermissions.data, capability)
       : ROLE_ORDER;
   const visibleScope = scope
     .map((rule) => ({ ...rule, roles: rule.roles.filter((role) => roles.includes(role)) }))

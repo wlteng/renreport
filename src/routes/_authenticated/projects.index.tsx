@@ -10,26 +10,15 @@ import {
   Pickaxe,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/AppShell";
+import { ProjectEditorDialog, type ProjectEditorValue } from "@/components/ProjectEditorDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/useSession";
 import {
@@ -41,24 +30,16 @@ import {
   useVisibleReports,
 } from "@/hooks/useData";
 import { hasCapability } from "@/lib/roles";
-import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { todayForDateInput } from "@/lib/dates";
 import { useLanguage } from "@/lib/i18n";
 import { personInitials } from "@/lib/people";
 import {
-  LICENSE_STATUS_LABEL,
-  MINING_METHOD_LABEL,
   PROJECT_CATEGORY_LABEL,
-  PROJECT_CATEGORY_OPTIONS,
-  PROJECT_LEGAL_NAME_LABEL,
-  PROJECT_LOCATION_LABEL,
   PROJECT_STATUS_LABEL,
   PROJECT_STATUS_ORDER,
   PROJECT_STATUS_TONE,
-  PROJECT_URL_LABEL,
 } from "@/lib/projects";
 import { cn } from "@/lib/utils";
-import { firstValidationError, projectSchema } from "@/lib/validation";
 import { currentReports } from "@/lib/workLogs";
 
 const MAX_AVATARS = 5;
@@ -104,24 +85,6 @@ function ProjectsPage() {
   const editable = hasCapability(permissions, "manage_projects", roles);
 
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("mine");
-  const [projectCode, setProjectCode] = useState("");
-  const [legalName, setLegalName] = useState("");
-  const [location, setLocation] = useState("");
-  const [miningMethod, setMiningMethod] = useState("other");
-  const [licenseStatus, setLicenseStatus] = useState("unknown");
-  const [reserveKg, setReserveKg] = useState("");
-  const [areaKm2, setAreaKm2] = useState("");
-  const [projectUrl, setProjectUrl] = useState("");
-  const [repositoryUrl, setRepositoryUrl] = useState("");
-  const [description, setDescription] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
-  const [fundAmount, setFundAmount] = useState("");
-  const [fundCurrency, setFundCurrency] = useState("USD");
-  const legalNameLabel = PROJECT_LEGAL_NAME_LABEL[category] ?? "Legal name";
-  const locationLabel = PROJECT_LOCATION_LABEL[category];
-  const urlLabel = PROJECT_URL_LABEL[category];
 
   const staffRestricted = roles.length === 1 && roles[0] === "staff";
   const visibleProjects = useMemo(() => {
@@ -134,7 +97,9 @@ function ProjectsPage() {
     const listed =
       !staffRestricted || !user
         ? allProjects
-        : allProjects.filter((project) => assignedProjectIds.has(project.id));
+        : allProjects.filter(
+            (project) => project.owner_id === user.id || assignedProjectIds.has(project.id),
+          );
     return [...listed].sort(
       (left, right) =>
         (PROJECT_STATUS_ORDER[left.status] ?? 9) - (PROJECT_STATUS_ORDER[right.status] ?? 9) ||
@@ -168,63 +133,17 @@ function ProjectsPage() {
   }, [taskSummary.data]);
 
   const create = useMutation({
-    mutationFn: async () => {
-      const parsed = projectSchema.safeParse({
-        name,
-        category,
-        project_code: projectCode,
-        legal_name: legalName,
-        location,
-        mining_method: miningMethod,
-        license_status: licenseStatus,
-        reserve_kg: reserveKg,
-        area_km2: areaKm2,
-        url: projectUrl,
-        repository_url: repositoryUrl,
-        department_id: departmentId,
-        description,
-        fund_amount: fundAmount,
-        fund_currency: fundCurrency,
-      });
-      if (!parsed.success) throw new Error(firstValidationError(parsed.error));
+    mutationFn: async (value: ProjectEditorValue) => {
       if (!user) throw new Error("Your session has expired");
-      const input = parsed.data;
       const { error } = await supabase.from("projects").insert({
-        ...input,
+        ...value,
         owner_id: user.id,
-        project_code: input.project_code ?? null,
-        legal_name: input.legal_name ?? null,
-        location: PROJECT_LOCATION_LABEL[input.category] ? (input.location ?? null) : null,
-        mining_method: input.category === "mine" ? input.mining_method : "other",
-        license_status: input.category === "mine" ? input.license_status : "unknown",
-        reserve_kg: input.category === "mine" ? (input.reserve_kg ?? null) : null,
-        area_km2: input.category === "mine" ? (input.area_km2 ?? null) : null,
-        url: PROJECT_URL_LABEL[input.category] ? (input.url ?? null) : null,
-        repository_url: input.category === "website" ? (input.repository_url ?? null) : null,
-        department_id: input.department_id ?? null,
-        description: input.description ?? null,
-        fund_amount: input.fund_amount ?? null,
       });
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success(t("Project created"));
       setOpen(false);
-      setName("");
-      setCategory("mine");
-      setProjectCode("");
-      setLegalName("");
-      setLocation("");
-      setMiningMethod("other");
-      setLicenseStatus("unknown");
-      setReserveKg("");
-      setAreaKm2("");
-      setProjectUrl("");
-      setRepositoryUrl("");
-      setDescription("");
-      setDepartmentId("");
-      setFundAmount("");
-      setFundCurrency("USD");
       queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (error) =>
@@ -253,208 +172,14 @@ function ProjectsPage() {
         }
       />
 
-      <Dialog open={open && editable} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{t("New project")}</DialogTitle>
-            <DialogDescription>
-              {t("Add the project details, category and starting fund.")}
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            className="space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              create.mutate();
-            }}
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Project name" id="pname">
-                <Input id="pname" value={name} onChange={(event) => setName(event.target.value)} />
-              </Field>
-              <Field label="Category" id="pcategory">
-                <select
-                  id="pcategory"
-                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value)}
-                >
-                  {PROJECT_CATEGORY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {t(option.label)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Project code" id="pcode">
-                <Input
-                  id="pcode"
-                  value={projectCode}
-                  onChange={(event) => setProjectCode(event.target.value)}
-                  placeholder={t("Optional unique code")}
-                />
-              </Field>
-              <Field label={legalNameLabel} id="plegal">
-                <Input
-                  id="plegal"
-                  value={legalName}
-                  onChange={(event) => setLegalName(event.target.value)}
-                />
-              </Field>
-              {locationLabel ? (
-                <Field label={locationLabel} id="plocation">
-                  <Input
-                    id="plocation"
-                    value={location}
-                    onChange={(event) => setLocation(event.target.value)}
-                  />
-                </Field>
-              ) : null}
-              {category === "mine" ? (
-                <>
-                  <Field label="Mining method" id="pmethod">
-                    <select
-                      id="pmethod"
-                      className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                      value={miningMethod}
-                      onChange={(event) => setMiningMethod(event.target.value)}
-                    >
-                      {Object.entries(MINING_METHOD_LABEL).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {t(label)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="License status" id="plicense">
-                    <select
-                      id="plicense"
-                      className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                      value={licenseStatus}
-                      onChange={(event) => setLicenseStatus(event.target.value)}
-                    >
-                      {Object.entries(LICENSE_STATUS_LABEL).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {t(label)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Estimated reserve (kg)" id="preserve">
-                    <Input
-                      id="preserve"
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      value={reserveKg}
-                      onChange={(event) => setReserveKg(event.target.value)}
-                    />
-                  </Field>
-                  <Field label="Area (km²)" id="parea">
-                    <Input
-                      id="parea"
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      value={areaKm2}
-                      onChange={(event) => setAreaKm2(event.target.value)}
-                    />
-                  </Field>
-                </>
-              ) : null}
-              {urlLabel ? (
-                <Field label={urlLabel} id="pproject-url">
-                  <Input
-                    id="pproject-url"
-                    type="url"
-                    inputMode="url"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    value={projectUrl}
-                    placeholder="https://example.com"
-                    onChange={(event) => setProjectUrl(event.target.value)}
-                  />
-                </Field>
-              ) : null}
-              {category === "website" ? (
-                <Field label="Git repository URL" id="prepository-url">
-                  <Input
-                    id="prepository-url"
-                    type="url"
-                    inputMode="url"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    value={repositoryUrl}
-                    placeholder="https://github.com/owner/repository"
-                    onChange={(event) => setRepositoryUrl(event.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t("Public GitHub repositories only. Commits appear in project Activity.")}
-                  </p>
-                </Field>
-              ) : null}
-              <Field label="Department" id="pdept">
-                <select
-                  id="pdept"
-                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                  value={departmentId}
-                  onChange={(event) => setDepartmentId(event.target.value)}
-                >
-                  <option value="">{t("None")}</option>
-                  {(departments.data ?? []).map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Starting fund" id="pfund">
-                <Input
-                  id="pfund"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={fundAmount}
-                  placeholder={t("Optional")}
-                  onChange={(event) => setFundAmount(event.target.value)}
-                />
-              </Field>
-              <Field label="Fund currency" id="pfund-currency">
-                <select
-                  id="pfund-currency"
-                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                  value={fundCurrency}
-                  onChange={(event) => setFundCurrency(event.target.value)}
-                >
-                  {CURRENCY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {t(option.label)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <Field label="Description" id="pdesc">
-              <Textarea
-                id="pdesc"
-                rows={3}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </Field>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="outline" className="flex-1 sm:flex-none">
-                  {t("Cancel")}
-                </Button>
-              </DialogClose>
-              <Button type="submit" className="flex-1 sm:flex-none" disabled={create.isPending}>
-                {create.isPending ? t("Creating…") : t("Create project")}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <ProjectEditorDialog
+        open={open && editable}
+        onOpenChange={setOpen}
+        defaultOwnerId={user?.id}
+        departments={departments.data ?? []}
+        pending={create.isPending}
+        onSubmit={(value) => create.mutate(value)}
+      />
 
       {projects.isLoading ? (
         <p className="text-sm text-muted-foreground">{t("Loading projects…")}</p>
@@ -586,15 +311,5 @@ function ProjectsPage() {
         ) : null}
       </div>
     </>
-  );
-}
-
-function Field({ label, id, children }: { label: string; id: string; children: ReactNode }) {
-  const { t } = useLanguage();
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{t(label)}</Label>
-      {children}
-    </div>
   );
 }

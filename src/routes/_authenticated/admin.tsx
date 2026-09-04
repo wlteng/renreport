@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { AdminWorkspace, type AdminSection } from "@/components/AdminWorkspace";
+import { AdminProjects } from "@/components/AdminProjects";
 import { PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,7 @@ import {
 import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
+import { useLanguage } from "@/lib/i18n";
 import {
   hasCapability,
   ROLE_DESCRIPTION,
@@ -58,7 +60,9 @@ import { staffLoginLabel } from "@/lib/staffAuth";
 export const Route = createFileRoute("/_authenticated/admin")({
   validateSearch: (search: Record<string, unknown>): { section: AdminSection } => ({
     section:
-      search["section"] === "departments" || search["section"] === "permissions"
+      search["section"] === "projects" ||
+      search["section"] === "departments" ||
+      search["section"] === "permissions"
         ? search["section"]
         : "people",
   }),
@@ -67,7 +71,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
       { title: "Admin — Ren Report" },
       {
         name: "description",
-        content: "Manage mining staff, departments, permissions and audit records.",
+        content: "Manage projects, mining staff, departments, permissions and audit records.",
       },
       { property: "og:title", content: "Admin — Ren Report" },
       { property: "og:description", content: "Mining operations administration." },
@@ -78,12 +82,14 @@ export const Route = createFileRoute("/_authenticated/admin")({
 
 const ADMIN_PAGE_TITLE: Record<AdminSection, string> = {
   people: "People & roles",
+  projects: "Projects",
   departments: "Departments",
   permissions: "Capabilities",
 };
 
 function AdminPage() {
   const { user, roles, permissions: myPermissions } = useMe();
+  const { t } = useLanguage();
   const people = usePeople();
   const allRoles = useAllRoles();
   const departments = useDepartments();
@@ -110,13 +116,13 @@ function AdminPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Department created");
+      toast.success(t("Department created"));
       setDepartmentOpen(false);
       setDeptName("");
       setDeptDescription("");
       queryClient.invalidateQueries({ queryKey: ["departments"] });
     },
-    onError: showError,
+    onError: (error) => showError(error, t),
   });
 
   const setPermission = useMutation({
@@ -132,27 +138,27 @@ function AdminPage() {
         .upsert(parsed.data, { onConflict: "role,permission_key" })
         .select("role, permission_key, enabled")
         .single();
-      if (error) throw new Error(`Database policy rejected the change: ${error.message}`);
+      if (error) throw new Error(`${t("Database policy rejected the change")}: ${error.message}`);
       if (
         data.role !== parsed.data.role ||
         data.permission_key !== parsed.data.permission_key ||
         data.enabled !== parsed.data.enabled
       ) {
-        throw new Error("Database validation returned an unexpected capability value");
+        throw new Error(t("Database validation returned an unexpected capability value"));
       }
       return data;
     },
     onSuccess: (saved) => {
-      const message = `${ROLE_LABEL[saved.role as AppRole]} · ${saved.permission_key} was ${saved.enabled ? "enabled" : "disabled"}`;
-      setMatrixResult({ status: "accepted", message: `RLS accepted: ${message}` });
-      toast.success("Capability saved after database validation");
+      const message = `${t(ROLE_LABEL[saved.role as AppRole])} · ${t(saved.permission_key)} ${t(saved.enabled ? "enabled" : "disabled")}`;
+      setMatrixResult({ status: "accepted", message: `${t("RLS accepted")}: ${message}` });
+      toast.success(t("Capability saved after database validation"));
       queryClient.invalidateQueries({ queryKey: ["role-permissions"] });
       queryClient.invalidateQueries({ queryKey: ["my-permissions"] });
       queryClient.invalidateQueries({ queryKey: ["admin-audit"] });
     },
     onError: (error) => {
       const message =
-        error instanceof Error ? error.message : "Database policy rejected the change";
+        error instanceof Error ? error.message : t("Database policy rejected the change");
       setMatrixResult({ status: "rejected", message });
       toast.error(message);
     },
@@ -161,7 +167,7 @@ function AdminPage() {
   if (!roles.includes("admin"))
     return (
       <div className="logbook-card p-10 text-center">
-        <p className="text-sm text-muted-foreground">Admins only.</p>
+        <p className="text-sm text-muted-foreground">{t("Admins only.")}</p>
       </div>
     );
 
@@ -176,7 +182,7 @@ function AdminPage() {
           tab === "people" ? (
             <CreateStaff departments={departments.data ?? []} />
           ) : tab === "departments" ? (
-            <Button onClick={() => setDepartmentOpen(true)}>Add department</Button>
+            <Button onClick={() => setDepartmentOpen(true)}>{t("Add department")}</Button>
           ) : undefined
         }
       />
@@ -197,14 +203,16 @@ function AdminPage() {
         </div>
       ) : null}
 
+      {tab === "projects" ? <AdminProjects /> : null}
+
       {tab === "departments" ? (
         <div className="space-y-6">
           <Dialog open={departmentOpen} onOpenChange={setDepartmentOpen}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add department</DialogTitle>
+                <DialogTitle>{t("Add department")}</DialogTitle>
                 <DialogDescription>
-                  Create a department for organizing staff and mine operations.
+                  {t("Create a department for organizing staff and mine operations.")}
                 </DialogDescription>
               </DialogHeader>
               <form
@@ -219,7 +227,7 @@ function AdminPage() {
                     id="dname"
                     value={deptName}
                     onChange={(event) => setDeptName(event.target.value)}
-                    placeholder="e.g. Mine operations"
+                    placeholder={t("e.g. Mine operations")}
                   />
                 </Field>
                 <Field label="Description" id="ddesc">
@@ -233,11 +241,11 @@ function AdminPage() {
                 <DialogFooter>
                   <DialogClose asChild>
                     <Button type="button" variant="outline">
-                      Cancel
+                      {t("Cancel")}
                     </Button>
                   </DialogClose>
                   <Button type="submit" disabled={createDepartment.isPending}>
-                    {createDepartment.isPending ? "Adding…" : "Add department"}
+                    {createDepartment.isPending ? t("Adding…") : t("Add department")}
                   </Button>
                 </DialogFooter>
               </form>
@@ -256,7 +264,7 @@ function AdminPage() {
             ))}
             {!departments.isLoading && (departments.data ?? []).length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-                No departments yet.
+                {t("No departments yet.")}
               </p>
             ) : null}
           </div>
@@ -266,8 +274,9 @@ function AdminPage() {
       {tab === "permissions" ? (
         <div className="space-y-4">
           <div className="rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
-            Every toggle is saved through Supabase row-level security and confirmed from the row the
-            database returns. Admin capabilities stay enabled as the recovery baseline.
+            {t(
+              "Every toggle is saved through Supabase row-level security and confirmed from the row the database returns. Admin capabilities stay enabled as the recovery baseline.",
+            )}
           </div>
           {matrixResult ? (
             <div
@@ -285,10 +294,10 @@ function AdminPage() {
             <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="px-4 py-3 text-left font-medium">Capability</th>
+                  <th className="px-4 py-3 text-left font-medium">{t("Capability")}</th>
                   {ROLE_ORDER.map((role) => (
                     <th key={role} className="px-4 py-3 text-center font-medium">
-                      {ROLE_LABEL[role]}
+                      {t(ROLE_LABEL[role])}
                     </th>
                   ))}
                 </tr>
@@ -297,9 +306,9 @@ function AdminPage() {
                 {(permissions.data ?? []).map((permission) => (
                   <tr key={permission.key} className="border-b border-border last:border-0">
                     <td className="px-4 py-3">
-                      <p className="font-medium">{permission.label}</p>
+                      <p className="font-medium">{t(permission.label)}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {permission.description}
+                        {t(permission.description)}
                       </p>
                     </td>
                     {ROLE_ORDER.map((role) => {
@@ -325,15 +334,15 @@ function AdminPage() {
                                   enabled: checked,
                                 })
                               }
-                              aria-label={`${permission.label} for ${ROLE_LABEL[role]}`}
+                              aria-label={`${t(permission.label)} · ${t(ROLE_LABEL[role])}`}
                               title={
                                 role === "admin"
-                                  ? "Admin capabilities are always enabled"
+                                  ? t("Admin capabilities are always enabled")
                                   : undefined
                               }
                             />
                             <span className="text-[10px] text-muted-foreground">
-                              {isSaving ? "Checking RLS…" : enabled ? "On" : "Off"}
+                              {isSaving ? t("Checking RLS…") : enabled ? t("On") : t("Off")}
                             </span>
                           </div>
                         </td>
@@ -352,6 +361,7 @@ function AdminPage() {
 
 function CreateStaff({ departments }: { departments: Department[] }) {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     full_name: "",
@@ -379,7 +389,7 @@ function CreateStaff({ departments }: { departments: Department[] }) {
       if (data?.error) throw new Error(data.error);
     },
     onSuccess: () => {
-      toast.success("Staff added");
+      toast.success(t("Staff added"));
       setOpen(false);
       setForm({
         full_name: "",
@@ -398,18 +408,18 @@ function CreateStaff({ departments }: { departments: Department[] }) {
       queryClient.invalidateQueries({ queryKey: ["all-roles"] });
       queryClient.invalidateQueries({ queryKey: ["compensation"] });
     },
-    onError: showError,
+    onError: (error) => showError(error, t),
   });
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>Add staff</Button>
+        <Button>{t("Add staff")}</Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add staff</DialogTitle>
+          <DialogTitle>{t("Add staff")}</DialogTitle>
           <DialogDescription>
-            Create a staff login. Employment details are optional.
+            {t("Create a staff login. Employment details are optional.")}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -456,7 +466,7 @@ function CreateStaff({ departments }: { departments: Department[] }) {
 
           <details className="rounded-md border border-border p-4">
             <summary className="cursor-pointer text-sm font-medium">
-              Optional employment details
+              {t("Optional employment details")}
             </summary>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label="Job title" id="stitle">
@@ -469,11 +479,11 @@ function CreateStaff({ departments }: { departments: Department[] }) {
               <Field label="Department" id="sdept">
                 <select
                   id="sdept"
-                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-base sm:text-sm"
                   value={form.department_id}
                   onChange={(event) => update("department_id", event.target.value)}
                 >
-                  <option value="">Unassigned</option>
+                  <option value="">{t("Unassigned")}</option>
                   {departments.map((department) => (
                     <option key={department.id} value={department.id}>
                       {department.name}
@@ -494,19 +504,19 @@ function CreateStaff({ departments }: { departments: Department[] }) {
               <Field label="Salary type" id="stype">
                 <select
                   id="stype"
-                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-base sm:text-sm"
                   value={form.salary_type}
                   onChange={(event) => update("salary_type", event.target.value)}
                 >
-                  <option value="monthly">Monthly</option>
-                  <option value="hourly">Hourly</option>
-                  <option value="daily">Daily</option>
+                  <option value="monthly">{t("Monthly")}</option>
+                  <option value="hourly">{t("Hourly")}</option>
+                  <option value="daily">{t("Daily")}</option>
                 </select>
               </Field>
               <Field label="Currency" id="scurrency">
                 <select
                   id="scurrency"
-                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-base sm:text-sm"
                   value={form.currency}
                   onChange={(event) => update("currency", event.target.value)}
                 >
@@ -534,7 +544,9 @@ function CreateStaff({ departments }: { departments: Department[] }) {
                     id="sresume"
                     rows={4}
                     maxLength={5000}
-                    placeholder="Employment history, mine types, technical experience, and qualifications"
+                    placeholder={t(
+                      "Employment history, mine types, technical experience, and qualifications",
+                    )}
                     value={form.resume}
                     onChange={(event) => update("resume", event.target.value)}
                   />
@@ -545,11 +557,11 @@ function CreateStaff({ departments }: { departments: Department[] }) {
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
-                Cancel
+                {t("Cancel")}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Adding…" : "Add staff"}
+              {create.isPending ? t("Adding…") : t("Add staff")}
             </Button>
           </DialogFooter>
         </form>
@@ -574,6 +586,7 @@ function PersonCard({
   currentUserId: string | undefined;
 }) {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
   const [fullName, setFullName] = useState(person.full_name ?? "");
   const [jobTitle, setJobTitle] = useState(person.job_title ?? "");
   const [resume, setResume] = useState(person.resume ?? "");
@@ -601,10 +614,10 @@ function PersonCard({
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Staff profile updated");
+      toast.success(t("Staff profile updated"));
       refreshPeople();
     },
-    onError: showError,
+    onError: (error) => showError(error, t),
   });
   const detailsMutation = useMutation({
     mutationFn: async () => {
@@ -626,10 +639,10 @@ function PersonCard({
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Staff details updated");
+      toast.success(t("Staff details updated"));
       refreshPeople();
     },
-    onError: showError,
+    onError: (error) => showError(error, t),
   });
   const roleMutation = useMutation({
     mutationFn: async ({ role, ownedId }: { role: AppRole; ownedId: string | undefined }) => {
@@ -643,10 +656,10 @@ function PersonCard({
       if (result.error) throw result.error;
     },
     onSuccess: () => {
-      toast.success("Role updated");
+      toast.success(t("Role updated"));
       refreshRoles();
     },
-    onError: showError,
+    onError: (error) => showError(error, t),
   });
   const saveCompensation = useMutation({
     mutationFn: async () => {
@@ -662,10 +675,10 @@ function PersonCard({
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Compensation updated");
+      toast.success(t("Compensation updated"));
       queryClient.invalidateQueries({ queryKey: ["compensation"] });
     },
-    onError: showError,
+    onError: (error) => showError(error, t),
   });
   return (
     <article className="logbook-card p-5">
@@ -684,14 +697,16 @@ function PersonCard({
             profileMutation.mutate({ user_id: person.id, is_active: !person.is_active })
           }
           disabled={person.id === currentUserId || profileMutation.isPending}
-          title={person.id === currentUserId ? "You cannot deactivate your own account" : undefined}
+          title={
+            person.id === currentUserId ? t("You cannot deactivate your own account") : undefined
+          }
           className="text-xs text-muted-foreground hover:text-foreground"
         >
-          {person.is_active ? "Deactivate" : "Reactivate"}
+          {t(person.is_active ? "Deactivate" : "Reactivate")}
         </button>
       </div>
       <details className="mt-4 border-t border-border pt-4">
-        <summary className="cursor-pointer text-xs font-medium">Staff details</summary>
+        <summary className="cursor-pointer text-xs font-medium">{t("Staff details")}</summary>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <Field label="Full name" id={`name-${person.id}`}>
             <Input
@@ -726,7 +741,7 @@ function PersonCard({
             onClick={() => detailsMutation.mutate()}
             disabled={detailsMutation.isPending}
           >
-            Save staff details
+            {t("Save staff details")}
           </Button>
         </div>
       </details>
@@ -741,8 +756,10 @@ function PersonCard({
               type="button"
               title={
                 cannotRemove
-                  ? "Every staff member needs a role, and admins cannot revoke their own admin role"
-                  : ROLE_DESCRIPTION[role]
+                  ? t(
+                      "Every staff member needs a role, and admins cannot revoke their own admin role",
+                    )
+                  : t(ROLE_DESCRIPTION[role])
               }
               onClick={() => roleMutation.mutate({ role, ownedId: owned?.id })}
               disabled={cannotRemove || roleMutation.isPending}
@@ -752,24 +769,24 @@ function PersonCard({
                   : "rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
               }
             >
-              {ROLE_LABEL[role]}
+              {t(ROLE_LABEL[role])}
             </button>
           );
         })}
       </div>
       <div className="mt-4 flex items-center gap-3">
         <Label className="logbook-label" htmlFor={`department-${person.id}`}>
-          Department
+          {t("Department")}
         </Label>
         <select
           id={`department-${person.id}`}
-          className="h-9 rounded-md border border-input bg-card px-2 text-sm"
+          className="h-10 rounded-md border border-input bg-card px-2 text-base sm:text-sm"
           value={person.department_id ?? ""}
           onChange={(event) =>
             profileMutation.mutate({ user_id: person.id, department_id: event.target.value })
           }
         >
-          <option value="">Unassigned</option>
+          <option value="">{t("Unassigned")}</option>
           {departments.map((department) => (
             <option key={department.id} value={department.id}>
               {department.name}
@@ -779,7 +796,9 @@ function PersonCard({
       </div>
       {canCompensate ? (
         <details className="mt-4 border-t border-border pt-4">
-          <summary className="cursor-pointer text-xs font-medium">Protected compensation</summary>
+          <summary className="cursor-pointer text-xs font-medium">
+            {t("Protected compensation")}
+          </summary>
           <div className="mt-4 grid gap-3 sm:grid-cols-4">
             <Field label="Amount" id={`salary-${person.id}`}>
               <Input
@@ -794,21 +813,21 @@ function PersonCard({
             <Field label="Type" id={`type-${person.id}`}>
               <select
                 id={`type-${person.id}`}
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-base sm:text-sm"
                 value={salaryType}
                 onChange={(event) =>
                   setSalaryType(event.target.value as "monthly" | "hourly" | "daily")
                 }
               >
-                <option value="monthly">Monthly</option>
-                <option value="hourly">Hourly</option>
-                <option value="daily">Daily</option>
+                <option value="monthly">{t("Monthly")}</option>
+                <option value="hourly">{t("Hourly")}</option>
+                <option value="daily">{t("Daily")}</option>
               </select>
             </Field>
             <Field label="Currency" id={`currency-${person.id}`}>
               <select
                 id={`currency-${person.id}`}
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-base sm:text-sm"
                 value={currency}
                 onChange={(event) => setCurrency(event.target.value)}
               >
@@ -831,7 +850,7 @@ function PersonCard({
                 aria-describedby={`hours-help-${person.id}`}
               />
               <p id={`hours-help-${person.id}`} className="text-xs text-muted-foreground">
-                Expected paid hours in a normal month; informational for now.
+                {t("Expected paid hours in a normal month; informational for now.")}
               </p>
             </Field>
           </div>
@@ -841,7 +860,7 @@ function PersonCard({
               onClick={() => saveCompensation.mutate()}
               disabled={saveCompensation.isPending}
             >
-              Save compensation
+              {t("Save compensation")}
             </Button>
           </div>
         </details>
@@ -858,6 +877,7 @@ function DepartmentCard({
   staffCount: number;
 }) {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
   const [name, setName] = useState(department.name);
   const [description, setDescription] = useState(department.description ?? "");
   const update = useMutation({
@@ -871,10 +891,10 @@ function DepartmentCard({
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Department updated");
+      toast.success(t("Department updated"));
       queryClient.invalidateQueries({ queryKey: ["departments"] });
     },
-    onError: showError,
+    onError: (error) => showError(error, t),
   });
 
   return (
@@ -882,7 +902,9 @@ function DepartmentCard({
       <summary className="cursor-pointer text-sm">
         <span className="flex items-center justify-between gap-3">
           <span>{department.name}</span>
-          <span className="text-xs text-muted-foreground">{staffCount} staff</span>
+          <span className="text-xs text-muted-foreground">
+            {staffCount} {t("staff")}
+          </span>
         </span>
       </summary>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -904,7 +926,7 @@ function DepartmentCard({
       </div>
       <div className="mt-3 flex justify-end">
         <Button size="sm" type="button" onClick={() => update.mutate()} disabled={update.isPending}>
-          Save department
+          {t("Save department")}
         </Button>
       </div>
     </details>
@@ -912,13 +934,14 @@ function DepartmentCard({
 }
 
 function Field({ label, id, children }: { label: string; id: string; children: ReactNode }) {
+  const { t } = useLanguage();
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id}>{t(label)}</Label>
       {children}
     </div>
   );
 }
-function showError(error: unknown) {
-  toast.error(error instanceof Error ? error.message : "Operation failed");
+function showError(error: unknown, t: (text: string) => string) {
+  toast.error(error instanceof Error ? error.message : t("Operation failed"));
 }

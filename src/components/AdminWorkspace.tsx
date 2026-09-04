@@ -4,6 +4,8 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  FolderKanban,
+  Languages,
   ScrollText,
   ShieldCheck,
   Users,
@@ -15,10 +17,11 @@ import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-export type AdminSection = "people" | "departments" | "permissions";
+export type AdminSection = "people" | "projects" | "departments" | "permissions";
 
 const ADMIN_NAVIGATION = [
   { id: "people", label: "People & roles", icon: Users },
+  { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "departments", label: "Departments", icon: Building2 },
   { id: "permissions", label: "Capabilities", icon: ShieldCheck },
 ] as const;
@@ -33,7 +36,7 @@ export function AdminWorkspace({
   children: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const { t } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
 
   return (
     <div className="flex min-h-screen overflow-hidden bg-card pt-[env(safe-area-inset-top,0px)]">
@@ -120,6 +123,20 @@ export function AdminWorkspace({
         </nav>
 
         <div className="border-t border-sidebar-border p-2">
+          <button
+            type="button"
+            title={language === "zh" ? "Switch to English" : "切换到中文"}
+            aria-label={language === "zh" ? "Switch to English" : "切换到中文"}
+            className="mb-1 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground"
+            onClick={() => setLanguage(language === "zh" ? "en" : "zh")}
+          >
+            <Languages className="size-4 shrink-0" />
+            {expanded ? (
+              <span className="hidden truncate sm:block">
+                {language === "zh" ? "English" : "中文"}
+              </span>
+            ) : null}
+          </button>
           <Link
             to="/dashboard"
             title={!expanded ? t("Back to app") : undefined}
