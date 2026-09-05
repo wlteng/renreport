@@ -21,6 +21,7 @@ import { useMe } from "@/hooks/useSession";
 import { todayForDateInput } from "@/lib/dates";
 import { deleteRecord } from "@/lib/deleteRecord";
 import { useLanguage, type AppLanguage } from "@/lib/i18n";
+import { isProjectWorkEnabled } from "@/lib/projects";
 import { isWithinEditWindow } from "@/lib/reportEdits";
 import { hasCapability, WORK_STATUS_LABEL } from "@/lib/roles";
 import { currentReports, historyOf, reportMeta, rowKeyHandler, STATUS_TONE } from "@/lib/workLogs";
@@ -431,7 +432,7 @@ function Dashboard() {
   const assignedActiveProjectIds = useMemo(() => {
     const activeProjectIds = new Set(
       (projects.data ?? [])
-        .filter((project) => project.status === "active")
+        .filter((project) => isProjectWorkEnabled(project.status))
         .map((project) => project.id),
     );
     return new Set(

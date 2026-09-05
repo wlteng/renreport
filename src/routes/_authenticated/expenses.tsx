@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, BarChart3, Filter } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -18,6 +18,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useExpenses, usePeople, useProjects } from "@/hooks/useData";
 import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
@@ -47,6 +54,7 @@ const statusLabel: Record<string, string> = {
   approved: "Approved",
   rejected: "Rejected",
 };
+const ALL_PROJECTS_VALUE = "all-projects";
 
 function monthRange(month: string) {
   if (!month) return { from: "", to: "" };
@@ -66,6 +74,7 @@ function monthOptions() {
 
 function ExpensesPage() {
   const search = Route.useSearch();
+  const navigate = useNavigate();
   const { user, profile, roles, permissions } = useMe();
   const { language, t } = useLanguage();
   const projects = useProjects();
@@ -91,13 +100,12 @@ function ExpensesPage() {
   const [month, setMonth] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [filterProject, setFilterProject] = useState(search.projectId ?? "");
   const [filterStatus, setFilterStatus] = useState("");
   const selectedMonth = monthRange(month);
   const expenses = useExpenses({
     from: selectedMonth.from || from,
     to: selectedMonth.to || to,
-    projectId: filterProject,
+    projectId: search.projectId ?? "",
     status: filterStatus as "" | "draft" | "submitted" | "approved" | "rejected",
   });
 
@@ -174,6 +182,42 @@ function ExpensesPage() {
       ) : null}
       <PageHeader
         title={search.report ? "Expense report" : "Expenses"}
+        titleContent={
+          !search.report ? (
+            <div>
+              <h1 className="sr-only">{t("Expenses")}</h1>
+              <Select
+                value={search.projectId ?? ALL_PROJECTS_VALUE}
+                onValueChange={(value) => {
+                  navigate({
+                    to: "/expenses",
+                    search: {
+                      create: search.create,
+                      report: search.report,
+                      projectId: value === ALL_PROJECTS_VALUE ? undefined : value,
+                    },
+                    replace: true,
+                  });
+                }}
+              >
+                <SelectTrigger
+                  className="h-11 w-40 border-0 bg-transparent px-0 text-base font-semibold shadow-none focus:ring-0 sm:w-56 sm:text-lg"
+                  aria-label={t("Project")}
+                >
+                  <SelectValue placeholder={t("All projects")} />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  <SelectItem value={ALL_PROJECTS_VALUE}>{t("All projects")}</SelectItem>
+                  {(projects.data ?? []).map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : undefined
+        }
         action={
           <div className="flex items-center gap-2">
             {!search.report ? (
@@ -242,8 +286,18 @@ function ExpensesPage() {
               <select
                 id="efilter-project"
                 className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={filterProject}
-                onChange={(event) => setFilterProject(event.target.value)}
+                value={search.projectId ?? ""}
+                onChange={(event) =>
+                  navigate({
+                    to: "/expenses",
+                    search: {
+                      create: search.create,
+                      report: search.report,
+                      projectId: event.target.value || undefined,
+                    },
+                    replace: true,
+                  })
+                }
               >
                 <option value="">{t("All projects")}</option>
                 {(projects.data ?? []).map((project) => (
@@ -304,8 +358,12 @@ function ExpensesPage() {
                 setMonth("");
                 setFrom("");
                 setTo("");
-                setFilterProject("");
                 setFilterStatus("");
+                navigate({
+                  to: "/expenses",
+                  search: { create: search.create, report: search.report, projectId: undefined },
+                  replace: true,
+                });
               }}
             >
               {t("Reset")}

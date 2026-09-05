@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/useSession";
-import { useActiveProjects, useProjectMembers, useReport } from "@/hooks/useData";
+import { useProjectMembers, useReport, useWorkEnabledProjects } from "@/hooks/useData";
 import { nowForTimeInput, todayForDateInput } from "@/lib/dates";
 import { useLanguage } from "@/lib/i18n";
 import { compressImage } from "@/lib/images";
@@ -86,10 +86,11 @@ const IMAGE_EXTENSION: Record<string, string> = {
   "image/webp": "webp",
 };
 
-// ?edit=<id> edits a work log inside its edit window; ?correct=<id> submits a correction.
+// ?edit=<id> edits a work log; ?correct=<id> submits a correction; ?projectId=<id> preselects a project.
 const submitWorkSearchSchema = z.object({
   edit: z.string().uuid().optional().catch(undefined),
   correct: z.string().uuid().optional().catch(undefined),
+  projectId: z.string().uuid().optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/_authenticated/reports/new")({
@@ -108,11 +109,11 @@ export const Route = createFileRoute("/_authenticated/reports/new")({
 function SubmitWork() {
   const { user, profile, roles, permissions } = useMe();
   const { t } = useLanguage();
-  const projects = useActiveProjects();
+  const projects = useWorkEnabledProjects();
   const projectMembers = useProjectMembers();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { edit: editId, correct: correctId } = Route.useSearch();
+  const { edit: editId, correct: correctId, projectId: requestedProjectId } = Route.useSearch();
   const mode: FormMode = editId ? "edit" : correctId ? "correct" : "new";
   const sourceId = editId ?? correctId;
   const source = useReport(sourceId);
@@ -158,8 +159,13 @@ function SubmitWork() {
   const showOutput = activityExtraFields.includes("output");
   const showBlockers = activityExtraFields.includes("blockers");
   const showLinks = activityExtraFields.includes("links");
+  const requestedProjectIsAvailable = availableProjects.some(
+    (project) => project.id === requestedProjectId,
+  );
   const selectedProjectId =
-    projectId || (availableProjects.length === 1 ? availableProjects[0]!.id : "");
+    projectId ||
+    (requestedProjectIsAvailable ? requestedProjectId : undefined) ||
+    (availableProjects.length === 1 ? availableProjects[0]!.id : "");
   const durationInput = {
     days: { max: "1", step: "0.25" },
     hours: { max: "24", step: "0.25" },

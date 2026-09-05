@@ -47,12 +47,13 @@ import {
 import { hasCapability } from "@/lib/roles";
 import { todayForDateInput } from "@/lib/dates";
 import { useLanguage } from "@/lib/i18n";
-import { personInitials } from "@/lib/people";
+import { personDisplayName, personInitials } from "@/lib/people";
 import {
   PROJECT_CATEGORY_LABEL,
   PROJECT_STATUS_LABEL,
   PROJECT_STATUS_ORDER,
   PROJECT_STATUS_TONE,
+  projectSlug,
 } from "@/lib/projects";
 import { cn } from "@/lib/utils";
 import { currentReports } from "@/lib/workLogs";
@@ -286,7 +287,8 @@ function ProjectsPage() {
             >
               <Link
                 to="/projects/$projectId"
-                params={{ projectId: project.id }}
+                params={{ projectId: projectSlug(project) }}
+                search={{ tab: "overview" }}
                 aria-label={`${t("Open project")}: ${project.name}`}
                 className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />
@@ -331,7 +333,11 @@ function ProjectsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="min-w-44">
                       <DropdownMenuItem asChild>
-                        <Link to="/projects/$projectId" params={{ projectId: project.id }}>
+                        <Link
+                          to="/projects/$projectId"
+                          params={{ projectId: projectSlug(project) }}
+                          search={{ tab: "overview" }}
+                        >
                           <ExternalLink />
                           {t("Open project")}
                         </Link>
@@ -383,7 +389,7 @@ function ProjectsPage() {
                         <Avatar
                           key={person.id}
                           className="size-7 border-2 border-card"
-                          title={person.full_name || person.email}
+                          title={personDisplayName(person, t("Unknown user"))}
                         >
                           <AvatarImage src={person.avatar_url ?? undefined} alt="" />
                           <AvatarFallback className="text-[10px] font-semibold">

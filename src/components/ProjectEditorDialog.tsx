@@ -1,5 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { X } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogClose,
@@ -10,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -32,10 +35,14 @@ import {
   PROJECT_STATUS_LABEL,
   PROJECT_URL_LABEL,
 } from "@/lib/projects";
+import { personDisplayName } from "@/lib/people";
 import { staffLoginLabel } from "@/lib/staffAuth";
 import { firstValidationError, projectSchema } from "@/lib/validation";
 
 const NONE = "__none__";
+const ALL_DEPARTMENTS = "__all_departments__";
+const NO_DEPARTMENT = "__no_department__";
+const NO_MEMBERS: string[] = [];
 
 type ProjectStatus = ProjectRow["status"];
 
@@ -61,6 +68,10 @@ export type ProjectEditorValue = {
 };
 
 type ProjectOwnerOption = Pick<PersonRow, "id" | "email" | "full_name">;
+type ProjectMemberOption = Pick<
+  PersonRow,
+  "id" | "email" | "full_name" | "job_title" | "department_id" | "is_active"
+>;
 
 type ProjectForm = {
   name: string;
@@ -136,6 +147,8 @@ export function ProjectEditorDialog({
   defaultOwnerId,
   departments,
   people = [],
+  assignablePeople,
+  initialMemberIds = NO_MEMBERS,
   showAdminFields = false,
   pending = false,
   onSubmit,
@@ -146,21 +159,27 @@ export function ProjectEditorDialog({
   defaultOwnerId?: string | undefined;
   departments: Department[];
   people?: ProjectOwnerOption[] | undefined;
+  assignablePeople?: ProjectMemberOption[] | undefined;
+  initialMemberIds?: string[] | undefined;
   showAdminFields?: boolean | undefined;
   pending?: boolean | undefined;
-  onSubmit: (value: ProjectEditorValue) => void;
+  onSubmit: (value: ProjectEditorValue, memberIds: string[]) => void;
 }) {
   const { t } = useLanguage();
   const [form, setForm] = useState<ProjectForm>(() =>
     project ? formFromProject(project, defaultOwnerId) : emptyForm(defaultOwnerId),
   );
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [memberIds, setMemberIds] = useState<string[]>(initialMemberIds);
+  const [memberDepartmentFilter, setMemberDepartmentFilter] = useState(ALL_DEPARTMENTS);
 
   useEffect(() => {
     if (!open) return;
     setForm(project ? formFromProject(project, defaultOwnerId) : emptyForm(defaultOwnerId));
+    setMemberIds(initialMemberIds);
+    setMemberDepartmentFilter(ALL_DEPARTMENTS);
     setValidationError(null);
-  }, [defaultOwnerId, open, project]);
+  }, [defaultOwnerId, initialMemberIds, open, project]);
 
   const update = <Key extends keyof ProjectForm>(key: Key, value: ProjectForm[Key]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -168,6 +187,31 @@ export function ProjectEditorDialog({
   const locationLabel = PROJECT_LOCATION_LABEL[form.category];
   const urlLabel = PROJECT_URL_LABEL[form.category];
   const title = project ? "Edit project" : "New project";
+  const memberIdSet = useMemo(() => new Set(memberIds), [memberIds]);
+  const selectedPeople = useMemo(
+    () => (assignablePeople ?? []).filter((person) => memberIdSet.has(person.id)),
+    [assignablePeople, memberIdSet],
+  );
+  const filteredPeople = useMemo(
+    () =>
+      (assignablePeople ?? []).filter((person) => {
+        if (!person.is_active && !memberIdSet.has(person.id)) return false;
+        if (memberDepartmentFilter === ALL_DEPARTMENTS) return true;
+        if (memberDepartmentFilter === NO_DEPARTMENT) return !person.department_id;
+        return person.department_id === memberDepartmentFilter;
+      }),
+    [assignablePeople, memberDepartmentFilter, memberIdSet],
+  );
+
+  function toggleMember(personId: string, selected: boolean) {
+    setMemberIds((current) =>
+      selected
+        ? current.includes(personId)
+          ? current
+          : [...current, personId]
+        : current.filter((id) => id !== personId),
+    );
+  }
 
   function submit() {
     const parsed = projectSchema.safeParse({
@@ -193,28 +237,31 @@ export function ProjectEditorDialog({
     }
     const input = parsed.data;
     setValidationError(null);
-    onSubmit({
-      name: input.name,
-      category: input.category,
-      project_code: input.project_code ?? null,
-      legal_name: input.legal_name ?? null,
-      location: PROJECT_LOCATION_LABEL[input.category] ? (input.location ?? null) : null,
-      mining_method: input.category === "mine" ? input.mining_method : "other",
-      license_status: input.category === "mine" ? input.license_status : "unknown",
-      reserve_kg: input.category === "mine" ? (input.reserve_kg ?? null) : null,
-      area_km2: input.category === "mine" ? (input.area_km2 ?? null) : null,
-      url: PROJECT_URL_LABEL[input.category] ? (input.url ?? null) : null,
-      repository_url: input.category === "website" ? (input.repository_url ?? null) : null,
-      department_id: input.department_id ?? null,
-      description: input.description ?? null,
-      fund_amount: input.fund_amount ?? null,
-      fund_currency: input.fund_currency,
-      status: showAdminFields ? form.status : (project?.status ?? "active"),
-      owner_id: showAdminFields
-        ? form.ownerId || null
-        : (project?.owner_id ?? defaultOwnerId ?? null),
-      color: showAdminFields ? form.color.trim() || null : (project?.color ?? null),
-    });
+    onSubmit(
+      {
+        name: input.name,
+        category: input.category,
+        project_code: input.project_code ?? null,
+        legal_name: input.legal_name ?? null,
+        location: PROJECT_LOCATION_LABEL[input.category] ? (input.location ?? null) : null,
+        mining_method: input.category === "mine" ? input.mining_method : "other",
+        license_status: input.category === "mine" ? input.license_status : "unknown",
+        reserve_kg: input.category === "mine" ? (input.reserve_kg ?? null) : null,
+        area_km2: input.category === "mine" ? (input.area_km2 ?? null) : null,
+        url: PROJECT_URL_LABEL[input.category] ? (input.url ?? null) : null,
+        repository_url: input.category === "website" ? (input.repository_url ?? null) : null,
+        department_id: input.department_id ?? null,
+        description: input.description ?? null,
+        fund_amount: input.fund_amount ?? null,
+        fund_currency: input.fund_currency,
+        status: showAdminFields ? form.status : (project?.status ?? "active"),
+        owner_id: showAdminFields
+          ? form.ownerId || null
+          : (project?.owner_id ?? defaultOwnerId ?? null),
+        color: showAdminFields ? form.color.trim() || null : (project?.color ?? null),
+      },
+      memberIds,
+    );
   }
 
   return (
@@ -293,7 +340,7 @@ export function ProjectEditorDialog({
                       {project ? <SelectItem value={NONE}>{t("Unassigned")}</SelectItem> : null}
                       {people.map((person) => (
                         <SelectItem key={person.id} value={person.id}>
-                          {person.full_name || staffLoginLabel(person.email)}
+                          {personDisplayName(person, t("Unknown user"))}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -495,6 +542,95 @@ export function ProjectEditorDialog({
               onChange={(event) => update("description", event.target.value)}
             />
           </Field>
+          {assignablePeople ? (
+            <section className="space-y-4 rounded-xl border border-border bg-muted/20 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold">{t("Project team")}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("Assign people directly to this project.")}
+                  </p>
+                </div>
+                <Badge variant="secondary">
+                  {memberIds.length} {t("selected")}
+                </Badge>
+              </div>
+
+              {selectedPeople.length > 0 ? (
+                <div>
+                  <p className="logbook-label mb-2">{t("Selected staff")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedPeople.map((person) => (
+                      <Badge key={person.id} variant="outline" className="gap-1.5 py-1 pl-2.5 pr-1">
+                        <span className="max-w-44 truncate">
+                          {personDisplayName(person, t("Unknown user"))}
+                        </span>
+                        <button
+                          type="button"
+                          className="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`${t("Remove from selection")}: ${personDisplayName(person, t("Unknown user"))}`}
+                          onClick={() => toggleMember(person.id, false)}
+                        >
+                          <X className="size-3.5" aria-hidden="true" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <Field label="Filter staff by department" id="project-member-department-filter">
+                <Select value={memberDepartmentFilter} onValueChange={setMemberDepartmentFilter}>
+                  <SelectTrigger id="project-member-department-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_DEPARTMENTS}>{t("All departments")}</SelectItem>
+                    <SelectItem value={NO_DEPARTMENT}>{t("No department")}</SelectItem>
+                    {departments.map((department) => (
+                      <SelectItem key={department.id} value={department.id}>
+                        {department.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <div className="grid max-h-64 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                {filteredPeople.map((person) => {
+                  const checked = memberIdSet.has(person.id);
+                  const personName = personDisplayName(person, t("Unknown user"));
+                  return (
+                    <label
+                      key={person.id}
+                      htmlFor={`project-member-${person.id}`}
+                      className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-muted/40"
+                    >
+                      <Checkbox
+                        id={`project-member-${person.id}`}
+                        checked={checked}
+                        onCheckedChange={(value) => toggleMember(person.id, value === true)}
+                        className="mt-0.5"
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">{personName}</span>
+                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                          {person.email ? staffLoginLabel(person.email) : null}
+                          {person.job_title ? ` · ${person.job_title}` : ""}
+                          {!person.is_active ? ` · ${t("Inactive")}` : ""}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+                {filteredPeople.length === 0 ? (
+                  <p className="py-4 text-sm text-muted-foreground sm:col-span-2">
+                    {t("No staff in this department.")}
+                  </p>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
           {validationError ? (
             <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {validationError}

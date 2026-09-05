@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/integrations/supabase/client";
+import { useUser } from "@/hooks/useSession";
 import type { Tables } from "@/integrations/supabase/types";
 import type { AppRole, PermissionKey, ReportType } from "@/lib/roles";
 
@@ -17,21 +18,38 @@ export type ProjectTaskRow = Tables<"project_tasks">;
 export type ProjectMilestoneRow = Tables<"project_milestones">;
 export type ProjectGitEventRow = Tables<"project_git_events">;
 
-export type PersonRow = Pick<
+type DirectoryProfile = Pick<
   Tables<"profiles">,
-  | "id"
-  | "email"
-  | "full_name"
-  | "avatar_url"
-  | "job_title"
-  | "resume"
-  | "department_id"
-  | "is_active"
+  "id" | "full_name" | "avatar_url" | "job_title" | "resume" | "department_id" | "is_active"
 >;
+export type PersonRow = DirectoryProfile & { email: string | null };
 export type StaffDirectoryRow = Pick<
-  Tables<"profiles">,
+  PersonRow,
   "id" | "email" | "full_name" | "avatar_url" | "job_title" | "is_active"
 >;
+
+const PUBLIC_DIRECTORY_FIELDS =
+  "id, full_name, avatar_url, job_title, resume, department_id, is_active" as const;
+
+async function loadPeopleDirectory(): Promise<PersonRow[]> {
+  const directory = await supabase.rpc("people_directory");
+  if (!directory.error) return directory.data ?? [];
+
+  // Keep the UI usable while the privacy migration is rolling out. The fallback
+  // deliberately omits email, even if the older profiles policy still exposes it.
+  if (
+    directory.error.code !== "PGRST202" &&
+    !directory.error.message.includes("people_directory")
+  ) {
+    throw directory.error;
+  }
+  const fallback = await supabase
+    .from("profiles")
+    .select(PUBLIC_DIRECTORY_FIELDS)
+    .order("full_name", { nullsFirst: false });
+  if (fallback.error) throw fallback.error;
+  return (fallback.data ?? []).map((person) => ({ ...person, email: null }));
+}
 
 export function useDepartments() {
   return useQuery({
@@ -55,15 +73,15 @@ export function useProjects() {
   });
 }
 
-export function useActiveProjects(enabled = true) {
+export function useWorkEnabledProjects(enabled = true) {
   return useQuery({
-    queryKey: ["projects", "active"],
+    queryKey: ["projects", "work-enabled"],
     enabled,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("projects")
         .select("*")
-        .eq("status", "active")
+        .in("status", ["active", "maintenance"])
         .order("name");
       if (error) throw error;
       return data ?? [];
@@ -82,14 +100,15 @@ export function useProjectMembers() {
   });
 }
 
-export function useProjectTasks(projectId: string) {
+export function useProjectTasks(projectId: string | undefined) {
   return useQuery({
     queryKey: ["project-tasks", projectId],
+    enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("project_tasks")
         .select("*")
-        .eq("project_id", projectId)
+        .eq("project_id", projectId!)
         .order("is_completed")
         .order("due_date", { ascending: true, nullsFirst: false })
         .order("created_at");
@@ -99,14 +118,15 @@ export function useProjectTasks(projectId: string) {
   });
 }
 
-export function useProjectMilestones(projectId: string) {
+export function useProjectMilestones(projectId: string | undefined) {
   return useQuery({
     queryKey: ["project-milestones", projectId],
+    enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("project_milestones")
         .select("*")
-        .eq("project_id", projectId)
+        .eq("project_id", projectId!)
         .order("is_achieved")
         .order("target_date", { ascending: true, nullsFirst: false })
         .order("created_at");
@@ -117,26 +137,30 @@ export function useProjectMilestones(projectId: string) {
 }
 
 export function useProjectGitEvents(
-  projectId: string,
+  projectId: string | undefined,
   repositoryUrl: string | null | undefined,
   enabled: boolean,
 ) {
   return useQuery({
     queryKey: ["project-git-events", projectId, repositoryUrl],
-    enabled: enabled && !!repositoryUrl,
+    enabled: enabled && !!projectId && !!repositoryUrl,
     staleTime: 5 * 60 * 1000,
     refetchOnMount: "always",
     retry: false,
     queryFn: async () => {
       const sync = await supabase.functions.invoke("sync-project-github", {
-        body: { projectId },
+        body: { projectId: projectId! },
       });
-      const { data, error } = await supabase
-        .from("project_git_events")
-        .select("*")
-        .eq("project_id", projectId)
-        .order("occurred_at", { ascending: false })
-        .limit(50);
+      const loadEvents = (hideDeleted: boolean) => {
+        let query = supabase.from("project_git_events").select("*").eq("project_id", projectId!);
+        if (hideDeleted) query = query.is("deleted_at", null);
+        return query.order("occurred_at", { ascending: false }).limit(50);
+      };
+      let { data, error } = await loadEvents(true);
+      // Keeps the page usable while the new migration is rolling out.
+      if (error?.code === "42703" || error?.message.includes("deleted_at")) {
+        ({ data, error } = await loadEvents(false));
+      }
       if (error) throw error;
       return {
         events: data ?? [],
@@ -161,36 +185,26 @@ export function useProjectTaskSummary() {
 }
 
 export function usePeople() {
+  const { user } = useUser();
   return useQuery({
-    queryKey: ["people"],
+    queryKey: ["people", user?.id],
+    enabled: !!user,
     queryFn: async () => {
-      const withResume = await supabase
-        .from("profiles")
-        .select("id, email, full_name, avatar_url, job_title, resume, department_id, is_active")
-        .order("full_name", { nullsFirst: false });
-      if (!withResume.error) return withResume.data ?? [];
-      if (!withResume.error.message.includes("profiles.resume")) throw withResume.error;
-
-      const fallback = await supabase
-        .from("profiles")
-        .select("id, email, full_name, avatar_url, job_title, department_id, is_active")
-        .order("full_name", { nullsFirst: false });
-      if (fallback.error) throw fallback.error;
-      return (fallback.data ?? []).map((person) => ({ ...person, resume: null }));
+      return loadPeopleDirectory();
     },
   });
 }
 
 export function useStaffDirectory() {
+  const { user } = useUser();
   return useQuery({
-    queryKey: ["people", "directory"],
+    queryKey: ["people", "directory", user?.id],
+    enabled: !!user,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, email, full_name, avatar_url, job_title, is_active")
-        .order("full_name", { nullsFirst: false });
-      if (error) throw error;
-      return data ?? [];
+      const data = await loadPeopleDirectory();
+      return data.map(
+        ({ resume: _resume, department_id: _departmentId, ...person }) => person,
+      ) as StaffDirectoryRow[];
     },
   });
 }
@@ -317,9 +331,10 @@ export type ReportFilters = {
   type?: string;
 };
 
-export function useVisibleReports(filters: ReportFilters) {
+export function useVisibleReports(filters: ReportFilters, enabled = true) {
   return useQuery({
     queryKey: ["visible-reports", filters],
+    enabled,
     queryFn: async () => {
       let query = supabase.from("reports").select("*");
       if (filters.from) query = query.gte("report_date", filters.from);
@@ -344,9 +359,10 @@ export type ExpenseFilters = {
   status?: ExpenseRow["status"] | "";
 };
 
-export function useExpenses(filters: ExpenseFilters) {
+export function useExpenses(filters: ExpenseFilters, enabled = true) {
   return useQuery({
     queryKey: ["expenses", filters],
+    enabled,
     queryFn: async () => {
       let query = supabase.from("expenses").select("*");
       if (filters.from) query = query.gte("expense_date", filters.from);

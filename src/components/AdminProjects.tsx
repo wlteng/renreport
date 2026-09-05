@@ -11,6 +11,7 @@ import {
   usePeople,
   useProjectMembers,
   useProjects,
+  type ProjectMemberRow,
   type ProjectRow,
 } from "@/hooks/useData";
 import { useMe } from "@/hooks/useSession";
@@ -22,8 +23,10 @@ import {
   PROJECT_STATUS_ORDER,
   PROJECT_STATUS_TONE,
 } from "@/lib/projects";
-import { staffLoginLabel } from "@/lib/staffAuth";
+import { personDisplayName } from "@/lib/people";
 import { cn } from "@/lib/utils";
+
+const EMPTY_MEMBER_IDS: string[] = [];
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -76,21 +79,56 @@ export function AdminProjects() {
       const person = peopleById.get(membership.user_id);
       if (!person) continue;
       const names = grouped.get(membership.project_id) ?? [];
-      names.push(person.full_name || staffLoginLabel(person.email));
+      names.push(personDisplayName(person, t("Unknown user")));
       grouped.set(membership.project_id, names);
     }
     return grouped;
-  }, [memberships.data, peopleById]);
+  }, [memberships.data, peopleById, t]);
+  const editingMemberIds = useMemo(
+    () =>
+      editingProject
+        ? (memberships.data ?? [])
+            .filter((membership) => membership.project_id === editingProject.id)
+            .map((membership) => membership.user_id)
+        : EMPTY_MEMBER_IDS,
+    [editingProject, memberships.data],
+  );
 
-  const refreshProjects = () => queryClient.invalidateQueries({ queryKey: ["projects"] });
+  const refreshProjects = () => {
+    queryClient.invalidateQueries({ queryKey: ["projects"] });
+    queryClient.invalidateQueries({ queryKey: ["project-members"] });
+  };
   const createProject = useMutation({
-    mutationFn: async (value: ProjectEditorValue) => {
+    mutationFn: async ({
+      value,
+      memberIds,
+    }: {
+      value: ProjectEditorValue;
+      memberIds: string[];
+    }) => {
       if (!user) throw new Error(t("Your session has expired"));
-      const { error } = await supabase.from("projects").insert({
-        ...value,
-        owner_id: value.owner_id ?? user.id,
-      });
+      const { data, error } = await supabase
+        .from("projects")
+        .insert({
+          ...value,
+          owner_id: value.owner_id ?? user.id,
+        })
+        .select("id")
+        .single();
       if (error) throw error;
+      const uniqueMemberIds = [...new Set(memberIds)];
+      if (uniqueMemberIds.length > 0) {
+        const { error: memberError } = await supabase.from("project_members").insert(
+          uniqueMemberIds.map((userId) => ({
+            project_id: data.id,
+            user_id: userId,
+          })),
+        );
+        if (memberError) {
+          await supabase.from("projects").delete().eq("id", data.id);
+          throw memberError;
+        }
+      }
     },
     onSuccess: () => {
       toast.success(t("Project created"));
@@ -100,10 +138,17 @@ export function AdminProjects() {
     onError: (error) => showError(error, t),
   });
   const updateProject = useMutation({
-    mutationFn: async (value: ProjectEditorValue) => {
+    mutationFn: async ({
+      value,
+      memberIds,
+    }: {
+      value: ProjectEditorValue;
+      memberIds: string[];
+    }) => {
       if (!editingProject) throw new Error(t("Choose a project to edit"));
       const { error } = await supabase.from("projects").update(value).eq("id", editingProject.id);
       if (error) throw error;
+      await syncProjectMembers(editingProject.id, memberIds, memberships.data ?? []);
     },
     onSuccess: () => {
       toast.success(t("Project updated"));
@@ -131,9 +176,11 @@ export function AdminProjects() {
         defaultOwnerId={user?.id}
         departments={departments.data ?? []}
         people={people.data ?? []}
+        assignablePeople={people.data ?? []}
+        initialMemberIds={EMPTY_MEMBER_IDS}
         showAdminFields
         pending={createProject.isPending}
-        onSubmit={(value) => createProject.mutate(value)}
+        onSubmit={(value, memberIds) => createProject.mutate({ value, memberIds })}
       />
       <ProjectEditorDialog
         open={!!editingProject}
@@ -144,9 +191,11 @@ export function AdminProjects() {
         defaultOwnerId={user?.id}
         departments={departments.data ?? []}
         people={people.data ?? []}
+        assignablePeople={people.data ?? []}
+        initialMemberIds={editingMemberIds}
         showAdminFields
         pending={updateProject.isPending}
-        onSubmit={(value) => updateProject.mutate(value)}
+        onSubmit={(value, memberIds) => updateProject.mutate({ value, memberIds })}
       />
 
       {projects.error ? (
@@ -223,8 +272,7 @@ export function AdminProjects() {
                     {t(PROJECT_CATEGORY_LABEL[category] ?? category)}
                   </td>
                   <td className="max-w-48 truncate px-4 py-3.5 text-muted-foreground">
-                    {owner?.full_name ||
-                      (owner?.email ? staffLoginLabel(owner.email) : t("Unknown user"))}
+                    {owner ? personDisplayName(owner, t("Unknown user")) : t("Unknown user")}
                   </td>
                   <td className="px-4 py-3.5 text-muted-foreground">{department?.name || "—"}</td>
                   <td className="px-4 py-3.5 text-center text-muted-foreground">
@@ -259,6 +307,40 @@ export function AdminProjects() {
       </div>
     </div>
   );
+}
+
+async function syncProjectMembers(
+  projectId: string,
+  memberIds: string[],
+  memberships: ProjectMemberRow[],
+) {
+  const nextMemberIds = new Set(memberIds);
+  const currentMemberships = memberships.filter(
+    (membership) => membership.project_id === projectId,
+  );
+  const currentMemberIds = new Set(currentMemberships.map((membership) => membership.user_id));
+  const memberIdsToAdd = [...nextMemberIds].filter((userId) => !currentMemberIds.has(userId));
+  const membershipIdsToRemove = currentMemberships
+    .filter((membership) => !nextMemberIds.has(membership.user_id))
+    .map((membership) => membership.id);
+
+  if (memberIdsToAdd.length > 0) {
+    const { error } = await supabase.from("project_members").insert(
+      memberIdsToAdd.map((userId) => ({
+        project_id: projectId,
+        user_id: userId,
+      })),
+    );
+    if (error) throw error;
+  }
+
+  if (membershipIdsToRemove.length > 0) {
+    const { error } = await supabase
+      .from("project_members")
+      .delete()
+      .in("id", membershipIdsToRemove);
+    if (error) throw error;
+  }
 }
 
 function showError(error: unknown, t: (text: string) => string) {

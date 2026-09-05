@@ -9,20 +9,20 @@ import {
   Circle,
   Clock3,
   ExternalLink,
+  EllipsisVertical,
   Flag,
-  FolderKanban,
   GitCommitHorizontal,
-  ListTodo,
   MapPin,
+  Pencil,
   Plus,
   ReceiptText,
-  Settings2,
+  Send,
   Trash2,
   Trophy,
   UserPlus,
   Users,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/AppShell";
@@ -53,6 +53,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -68,6 +75,7 @@ import {
   useProjects,
   useStaffDirectory,
   useVisibleReports,
+  type ProjectRow,
   type ProjectTaskRow,
   type StaffDirectoryRow,
 } from "@/hooks/useData";
@@ -76,8 +84,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { todayForDateInput } from "@/lib/dates";
 import { deleteRecord } from "@/lib/deleteRecord";
 import { useLanguage } from "@/lib/i18n";
-import { personInitials } from "@/lib/people";
+import { personDisplayName, personInitials } from "@/lib/people";
 import {
+  isProjectWorkEnabled,
   LICENSE_STATUS_LABEL,
   MINING_METHOD_LABEL,
   PROJECT_CATEGORY_LABEL,
@@ -85,6 +94,7 @@ import {
   PROJECT_LOCATION_LABEL,
   PROJECT_STATUS_TONE,
   PROJECT_URL_LABEL,
+  projectSlug,
 } from "@/lib/projects";
 import { hasCapability, WORK_STATUS_LABEL } from "@/lib/roles";
 import { staffLoginLabel } from "@/lib/staffAuth";
@@ -104,6 +114,8 @@ import {
 } from "@/lib/validation";
 
 export const Route = createFileRoute("/_authenticated/projects/$projectId")({
+  validateSearch: (search: Record<string, unknown>): { tab?: ProjectTab } =>
+    isProjectTab(search["tab"]) ? { tab: search["tab"] } : {},
   head: () => ({
     meta: [
       { title: "Project — Ren Report" },
@@ -117,8 +129,16 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
   component: ProjectDetailPage,
 });
 
+const PROJECT_TABS = ["overview", "progress", "staff", "activity", "expenses"] as const;
+type ProjectTab = (typeof PROJECT_TABS)[number];
+
+function isProjectTab(value: unknown): value is ProjectTab {
+  return typeof value === "string" && PROJECT_TABS.some((tab) => tab === value);
+}
+
 const STATUS_LABEL: Record<string, string> = {
   active: "Active",
+  maintenance: "Ongoing maintenance",
   paused: "Paused",
   completed: "Completed",
   archived: "Archived",
@@ -157,17 +177,23 @@ function formatMoney(currency: string, amount: number) {
 }
 
 function ProjectDetailPage() {
-  const { projectId } = Route.useParams();
+  const { projectId: routeProjectKey } = Route.useParams();
+  const { tab: requestedTab } = Route.useSearch();
+  const navigate = useNavigate();
   const { user, profile, roles, permissions } = useMe();
   const { language, t } = useLanguage();
   const projects = useProjects();
   const departments = useDepartments();
   const people = useStaffDirectory();
   const memberships = useProjectMembers();
+  const rawProject = projects.data?.find(
+    (item) => item.id === routeProjectKey || projectSlug(item) === routeProjectKey,
+  );
+  const projectId = rawProject?.id ?? "";
   const tasks = useProjectTasks(projectId);
   const milestones = useProjectMilestones(projectId);
-  const reports = useVisibleReports({ projectId });
-  const expenses = useExpenses({ projectId });
+  const reports = useVisibleReports({ projectId }, !!projectId);
+  const expenses = useExpenses({ projectId }, !!projectId);
   const queryClient = useQueryClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
@@ -185,8 +211,14 @@ function ProjectDetailPage() {
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [staffOpen, setStaffOpen] = useState(false);
   const [staffSearch, setStaffSearch] = useState("");
+  const [selectedTeamMember, setSelectedTeamMember] = useState<StaffDirectoryRow | null>(null);
+  const [removeStaffTarget, setRemoveStaffTarget] = useState<StaffDirectoryRow | null>(null);
+  const [deleteActivityTarget, setDeleteActivityTarget] = useState<{
+    kind: "report" | "git_event";
+    id: string;
+    label: string;
+  } | null>(null);
 
-  const rawProject = projects.data?.find((item) => item.id === projectId);
   const staffRestricted = roles.length === 1 && roles[0] === "staff";
   const staffAssigned =
     rawProject?.owner_id === user?.id ||
@@ -199,6 +231,19 @@ function ProjectDetailPage() {
     project?.repository_url,
     project?.category === "website",
   );
+  const activeTab = requestedTab ?? "overview";
+
+  useEffect(() => {
+    if (!project) return;
+    const slug = projectSlug(project);
+    if (routeProjectKey === slug && requestedTab) return;
+    navigate({
+      to: "/projects/$projectId",
+      params: { projectId: slug },
+      search: { tab: activeTab },
+      replace: true,
+    });
+  }, [activeTab, navigate, project, requestedTab, routeProjectKey]);
   const peopleById = useMemo(
     () => new Map((people.data ?? []).map((person) => [person.id, person])),
     [people.data],
@@ -222,10 +267,21 @@ function ProjectDetailPage() {
       .filter((person) => {
         if (!person.is_active || assignedUserIds.has(person.id)) return false;
         if (!term) return true;
-        return `${person.full_name ?? ""} ${person.email}`.toLocaleLowerCase().includes(term);
+        return `${person.full_name ?? ""} ${person.email ?? ""}`.toLocaleLowerCase().includes(term);
       })
       .slice(0, 20);
   }, [assignedUserIds, people.data, staffSearch]);
+  const selectedMemberProjects = useMemo(() => {
+    if (!selectedTeamMember) return [];
+    const membershipProjectIds = new Set(
+      (memberships.data ?? [])
+        .filter((membership) => membership.user_id === selectedTeamMember.id)
+        .map((membership) => membership.project_id),
+    );
+    return (projects.data ?? []).filter(
+      (item) => item.owner_id === selectedTeamMember.id || membershipProjectIds.has(item.id),
+    );
+  }, [memberships.data, projects.data, selectedTeamMember]);
   const totalHours = useMemo(
     () =>
       currentReports(reports.data ?? []).reduce(
@@ -301,14 +357,25 @@ function ProjectDetailPage() {
       .map(([currency, amount]) => formatMoney(currency, amount))
       .join(" · ");
   }, [expenses.data]);
-  const hasVisibleExpenses = (expenses.data?.length ?? 0) > 0;
-
   const category = project?.category ?? "mine";
   const legalNameLabel = PROJECT_LEGAL_NAME_LABEL[category] ?? "Legal name";
   const locationLabel = PROJECT_LOCATION_LABEL[category];
   const urlLabel = PROJECT_URL_LABEL[category];
   const fundCurrency = project?.fund_currency ?? "USD";
   const expenseTotalLabel = expenseTotals || formatMoney(fundCurrency, 0);
+  const dailyCostLabel = useMemo(() => {
+    const today = todayForDateInput();
+    const totals = new Map<string, number>();
+    for (const expense of expenses.data ?? []) {
+      if (expense.expense_date !== today || expense.status === "rejected") continue;
+      totals.set(expense.currency, (totals.get(expense.currency) ?? 0) + Number(expense.amount));
+    }
+    return (
+      [...totals.entries()]
+        .map(([currency, amount]) => formatMoney(currency, amount))
+        .join(" · ") || formatMoney(fundCurrency, 0)
+    );
+  }, [expenses.data, fundCurrency]);
   const committedExpenses = useMemo(
     () =>
       (expenses.data ?? []).reduce(
@@ -330,10 +397,16 @@ function ProjectDetailPage() {
   const canManageStaff =
     !!profile?.is_active && !!user && (project?.owner_id === user.id || roles.includes("admin"));
   const canDeleteProject = !!profile?.is_active && roles.includes("admin");
-  const navigate = useNavigate();
+  const canDeleteActivity = !!profile?.is_active && roles.includes("admin");
+  const canSubmitProjectWork =
+    !!profile?.is_active &&
+    !!user &&
+    assignedUserIds.has(user.id) &&
+    isProjectWorkEnabled(project?.status ?? "") &&
+    hasCapability(permissions, "submit_work", roles);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const deleteProject = useMutation({
-    mutationFn: () => deleteRecord("project", projectId),
+    mutationFn: () => deleteRecord("project", projectId!),
     onSuccess: () => {
       toast.success(t("Project deleted"));
       setDeleteOpen(false);
@@ -343,9 +416,28 @@ function ProjectDetailPage() {
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Could not delete project")),
   });
+  const deleteActivity = useMutation({
+    mutationFn: async (target: NonNullable<typeof deleteActivityTarget>) => {
+      if (!canDeleteActivity) throw new Error(t("Only admins can delete project activity"));
+      return deleteRecord(target.kind, target.id);
+    },
+    onSuccess: (_data, target) => {
+      toast.success(t("Activity deleted"));
+      if (target.kind === "report" && selectedReportId === target.id) {
+        setSelectedReportId(null);
+      }
+      setDeleteActivityTarget(null);
+      queryClient.invalidateQueries({ queryKey: ["visible-reports"] });
+      queryClient.invalidateQueries({ queryKey: ["project-git-events", projectId] });
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : t("Could not delete activity")),
+  });
   const canViewAllExpenses = hasCapability(permissions, "view_expenses", roles);
   const canSubmitExpenses =
-    !!profile?.is_active && hasCapability(permissions, "submit_expenses", roles);
+    !!profile?.is_active &&
+    isProjectWorkEnabled(project?.status ?? "") &&
+    hasCapability(permissions, "submit_expenses", roles);
   const currentFundLabel =
     currentFund === null
       ? "Not set"
@@ -382,6 +474,7 @@ function ProjectDetailPage() {
     },
     onSuccess: () => {
       toast.success(t("Staff member removed"));
+      setRemoveStaffTarget(null);
       queryClient.invalidateQueries({ queryKey: ["project-members"] });
     },
     onError: (error) =>
@@ -567,47 +660,70 @@ function ProjectDetailPage() {
         project.area_km2 !== null ||
         project.reserve_kg !== null)),
   );
-
   return (
     <>
-      <Button asChild variant="ghost" className="mb-4 -ml-3">
-        <Link to="/projects">
-          <ArrowLeft />
-          {t("Projects")}
-        </Link>
-      </Button>
-
       <PageHeader
         title={project.name}
+        className="mb-3"
+        leading={
+          <Button
+            asChild
+            size="icon"
+            variant="ghost"
+            className="-ml-2 size-11 shrink-0 rounded-full"
+          >
+            <Link to="/projects" aria-label={t("Back to projects")} title={t("Back to projects")}>
+              <ArrowLeft className="size-5" />
+            </Link>
+          </Button>
+        }
         action={
-          <div className="flex items-center gap-2">
-            {canManageProject ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setSettingsOpen(true)}
-              >
-                <Settings2 />
-                {t("Edit project")}
-              </Button>
-            ) : null}
-            {canDeleteProject ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 />
-                {t("Delete project")}
-              </Button>
-            ) : null}
-            <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
-              {t(STATUS_LABEL[project.status] ?? project.status)}
-            </Badge>
-          </div>
+          canSubmitProjectWork || canManageProject || canDeleteProject ? (
+            <div className="flex shrink-0 items-center gap-1">
+              {canSubmitProjectWork ? (
+                <Button asChild size="sm" className="h-10">
+                  <Link to="/reports/new" search={{ projectId }}>
+                    <Send aria-hidden="true" />
+                    {t("Submit work")}
+                  </Link>
+                </Button>
+              ) : null}
+              {canManageProject || canDeleteProject ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-11 shrink-0 rounded-full"
+                      aria-label={t("Project actions")}
+                      title={t("Project actions")}
+                    >
+                      <EllipsisVertical aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-44">
+                    {canManageProject ? (
+                      <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+                        <Pencil />
+                        {t("Edit project")}
+                      </DropdownMenuItem>
+                    ) : null}
+                    {canManageProject && canDeleteProject ? <DropdownMenuSeparator /> : null}
+                    {canDeleteProject ? (
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onSelect={() => setDeleteOpen(true)}
+                      >
+                        <Trash2 />
+                        {t("Delete project")}
+                      </DropdownMenuItem>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </div>
+          ) : null
         }
       />
 
@@ -700,7 +816,7 @@ function ProjectDetailPage() {
                   <option value="">{t("Unassigned")}</option>
                   {assignedPeople.map((person) => (
                     <option key={person.id} value={person.id}>
-                      {person.full_name || staffLoginLabel(person.email)}
+                      {personDisplayName(person, t("Unknown user"))}
                     </option>
                   ))}
                 </select>
@@ -812,6 +928,135 @@ function ProjectDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog
+        open={!!deleteActivityTarget && canDeleteActivity}
+        onOpenChange={(open) => {
+          if (!open) setDeleteActivityTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("Delete this activity?")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteActivityTarget
+                ? `${t("This removes the activity from the project timeline and cannot be undone.")} ${deleteActivityTarget.label}`
+                : t("This removes the activity from the project timeline and cannot be undone.")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteActivity.isPending}>{t("Cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteActivity.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (deleteActivityTarget) deleteActivity.mutate(deleteActivityTarget);
+              }}
+            >
+              {deleteActivity.isPending ? t("Deleting…") : t("Delete activity")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!removeStaffTarget && canManageStaff}
+        onOpenChange={(open) => {
+          if (!open) setRemoveStaffTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("Remove this staff member?")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {removeStaffTarget ? (
+                <>
+                  <span className="mb-1 block font-medium text-foreground">
+                    {personDisplayName(removeStaffTarget, t("Unknown user"))}
+                  </span>
+                  {t(
+                    "This removes the staff member from this project. It does not delete their account.",
+                  )}
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removeMember.isPending}>{t("Cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={removeMember.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (removeStaffTarget) removeMember.mutate(removeStaffTarget.id);
+              }}
+            >
+              {removeMember.isPending ? t("Removing…") : t("Remove")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={!!selectedTeamMember}
+        onOpenChange={(open) => {
+          if (!open) setSelectedTeamMember(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          {selectedTeamMember ? (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-3">
+                  <Avatar className="size-12 shrink-0 border border-border">
+                    <AvatarImage src={selectedTeamMember.avatar_url ?? undefined} alt="" />
+                    <AvatarFallback className="text-sm font-semibold">
+                      {personInitials(selectedTeamMember.full_name, selectedTeamMember.email)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 text-left">
+                    <DialogTitle className="truncate">
+                      {personDisplayName(selectedTeamMember, t("Unknown user"))}
+                    </DialogTitle>
+                    <DialogDescription className="mt-1 truncate">
+                      {[
+                        selectedTeamMember.email ? staffLoginLabel(selectedTeamMember.email) : null,
+                        selectedTeamMember.job_title,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+              <div className="space-y-4">
+                <MemberProjectSummary project={project} label="Current project" />
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold">{t("Other projects")}</h3>
+                  <div className="space-y-2">
+                    {selectedMemberProjects
+                      .filter((item) => item.id !== projectId)
+                      .map((item) => (
+                        <MemberProjectSummary key={item.id} project={item} />
+                      ))}
+                    {selectedMemberProjects.every((item) => item.id === projectId) ? (
+                      <p className="rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">
+                        {t("No other projects assigned.")}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button">{t("Done")}</Button>
+                </DialogClose>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={!!selectedMilestone}
         onOpenChange={(open) => {
@@ -890,12 +1135,15 @@ function ProjectDetailPage() {
               {t("Only the project creator or an admin can change staff assignments.")}
             </DialogDescription>
           </DialogHeader>
-          <Field label="Find staff by name or email" id="project-staff-search">
+          <Field
+            label={roles.includes("admin") ? "Find staff by name or email" : "Find staff by name"}
+            id="project-staff-search"
+          >
             <Input
               id="project-staff-search"
               type="search"
               value={staffSearch}
-              placeholder={t("Name or email address")}
+              placeholder={t(roles.includes("admin") ? "Name or email address" : "Staff name")}
               onChange={(event) => setStaffSearch(event.target.value)}
             />
           </Field>
@@ -904,11 +1152,12 @@ function ProjectDetailPage() {
               <div key={person.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">
-                    {person.full_name || staffLoginLabel(person.email)}
+                    {personDisplayName(person, t("Unknown user"))}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {staffLoginLabel(person.email)}
-                    {person.job_title ? ` · ${person.job_title}` : ""}
+                    {[person.email ? staffLoginLabel(person.email) : null, person.job_title]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                 </div>
                 <Button
@@ -946,7 +1195,7 @@ function ProjectDetailPage() {
         lockProject
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {currentFund !== null ? (
           <SummaryCard
             icon={Banknote}
@@ -955,14 +1204,12 @@ function ProjectDetailPage() {
             tone="bg-stat-teal"
           />
         ) : null}
-        {assignedPeople.length > 0 ? (
-          <SummaryCard
-            icon={Users}
-            label="Assigned staff"
-            value={String(assignedPeople.length)}
-            tone="bg-stat-gold"
-          />
-        ) : null}
+        <SummaryCard
+          icon={CalendarDays}
+          label="Daily cost"
+          value={dailyCostLabel}
+          tone="bg-stat-gold"
+        />
         {(reports.data?.length ?? 0) > 0 ? (
           <SummaryCard
             icon={Clock3}
@@ -979,7 +1226,18 @@ function ProjectDetailPage() {
         />
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          if (!isProjectTab(value)) return;
+          navigate({
+            to: "/projects/$projectId",
+            params: { projectId: projectSlug(project) },
+            search: { tab: value },
+          });
+        }}
+        className="space-y-4"
+      >
         <TabsList className="flex h-auto w-full justify-start gap-1 overflow-x-auto [scrollbar-width:none] sm:grid sm:grid-cols-5 sm:overflow-visible [&::-webkit-scrollbar]:hidden">
           <TabsTrigger value="overview" className="shrink-0">
             {t("Overview")}
@@ -988,7 +1246,7 @@ function ProjectDetailPage() {
             {t("Progress")} ({completedTaskCount}/{tasks.data?.length ?? 0})
           </TabsTrigger>
           <TabsTrigger value="staff" className="shrink-0">
-            {t("Staff")} ({assignedPeople.length})
+            {t("Team")} ({assignedPeople.length})
           </TabsTrigger>
           <TabsTrigger value="activity" className="shrink-0">
             {t("Activity")} ({activityItems.length})
@@ -998,234 +1256,179 @@ function ProjectDetailPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview">
-          <div className="overflow-hidden rounded-2xl bg-card shadow-sm">
-            <div className="relative overflow-hidden bg-gradient-to-br from-primary/15 via-card to-stat-gold/60 p-6 sm:p-8">
-              <div
-                className="absolute inset-x-0 top-0 h-1"
-                style={{ backgroundColor: project.color || "hsl(var(--primary))" }}
-              />
-              <div className="flex flex-wrap items-start justify-between gap-5">
-                <div className="flex min-w-0 items-start gap-4">
-                  <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-                    <FolderKanban className="size-6" aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary">
-                        {t(PROJECT_CATEGORY_LABEL[category] ?? category)}
-                      </Badge>
-                      {project.project_code ? (
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {project.project_code}
-                        </span>
-                      ) : null}
-                    </div>
-                    <h2 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                      {project.legal_name || project.name}
-                    </h2>
-                    {project.description ? (
-                      <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                        {project.description}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-                <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
-                  {t(STATUS_LABEL[project.status] ?? project.status)}
-                </Badge>
-              </div>
-            </div>
-
-            <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-2">
-              {hasIdentityDetails ? (
-                <OverviewGroup icon={Building2} title="Ownership & identity">
-                  {project.legal_name ? (
-                    <ProjectField label={legalNameLabel} value={project.legal_name} />
-                  ) : null}
-                  {project.project_code ? (
-                    <ProjectField label="Project code" value={project.project_code} />
-                  ) : null}
-                  {department ? <ProjectField label="Department" value={department.name} /> : null}
-                  {owner ? (
-                    <ProjectField
-                      label="Project creator"
-                      value={owner.full_name || staffLoginLabel(owner.email)}
-                    />
-                  ) : null}
-                </OverviewGroup>
-              ) : null}
-
-              {hasOperationsDetails ? (
-                <OverviewGroup icon={MapPin} title="Operations">
-                  {locationLabel && project.location ? (
-                    <ProjectField label={locationLabel} value={project.location} />
-                  ) : null}
-                  {category === "mine" && project.mining_method !== "other" ? (
-                    <ProjectField
-                      label="Mining method"
-                      value={t(MINING_METHOD_LABEL[project.mining_method] ?? project.mining_method)}
-                    />
-                  ) : null}
-                  {category === "mine" && project.license_status !== "unknown" ? (
-                    <ProjectField
-                      label="License status"
-                      value={t(
-                        LICENSE_STATUS_LABEL[project.license_status] ?? project.license_status,
-                      )}
-                    />
-                  ) : null}
-                  {category === "mine" && project.area_km2 !== null ? (
-                    <ProjectField
-                      label="Area"
-                      value={`${Number(project.area_km2).toLocaleString()} km²`}
-                    />
-                  ) : null}
-                  {category === "mine" && project.reserve_kg !== null ? (
-                    <ProjectField
-                      label="Estimated reserve"
-                      value={`${Number(project.reserve_kg).toLocaleString()} kg`}
-                    />
-                  ) : null}
-                </OverviewGroup>
-              ) : null}
-
-              <OverviewGroup icon={Banknote} title="Funding">
-                {project.fund_amount !== null ? (
-                  <>
-                    <ProjectField
-                      label="Starting fund"
-                      value={formatMoney(fundCurrency, Number(project.fund_amount))}
-                    />
-                    {canViewAllExpenses && committedExpenses > 0 ? (
-                      <ProjectField
-                        label="Committed expenses"
-                        value={formatMoney(fundCurrency, committedExpenses)}
-                      />
-                    ) : null}
-                    <ProjectField label="Current fund" value={currentFundLabel} />
-                    <ProjectField label="Currency" value={fundCurrency} />
-                  </>
+        <TabsContent value="overview" className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2 px-1">
+            <Badge variant="secondary">{t(PROJECT_CATEGORY_LABEL[category] ?? category)}</Badge>
+            <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
+              {t(STATUS_LABEL[project.status] ?? project.status)}
+            </Badge>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {hasIdentityDetails ? (
+              <OverviewGroup icon={Building2} title="Ownership & identity">
+                {project.legal_name ? (
+                  <ProjectField label={legalNameLabel} value={project.legal_name} />
                 ) : null}
-                <ProjectField label="Total expenses" value={expenseTotalLabel} />
+                {project.project_code ? (
+                  <ProjectField label="Project code" value={project.project_code} />
+                ) : null}
+                {department ? <ProjectField label="Department" value={department.name} /> : null}
+                {owner ? (
+                  <ProjectField
+                    label="Project creator"
+                    value={personDisplayName(owner, t("Unknown user"))}
+                  />
+                ) : null}
               </OverviewGroup>
+            ) : null}
 
-              <OverviewGroup icon={CalendarDays} title="Links & timeline">
-                {urlLabel && project.url ? (
-                  <ProjectLinkField label={urlLabel} value={project.url} />
+            {hasOperationsDetails ? (
+              <OverviewGroup icon={MapPin} title="Operations">
+                {locationLabel && project.location ? (
+                  <ProjectField label={locationLabel} value={project.location} />
                 ) : null}
-                {category === "website" && project.repository_url ? (
-                  <ProjectLinkField label="Git repository URL" value={project.repository_url} />
+                {category === "mine" && project.mining_method !== "other" ? (
+                  <ProjectField
+                    label="Mining method"
+                    value={t(MINING_METHOD_LABEL[project.mining_method] ?? project.mining_method)}
+                  />
                 ) : null}
-                <ProjectField label="Created" value={formatDateTime(project.created_at)} />
-                <ProjectField label="Last updated" value={formatDateTime(project.updated_at)} />
+                {category === "mine" && project.license_status !== "unknown" ? (
+                  <ProjectField
+                    label="License status"
+                    value={t(
+                      LICENSE_STATUS_LABEL[project.license_status] ?? project.license_status,
+                    )}
+                  />
+                ) : null}
+                {category === "mine" && project.area_km2 !== null ? (
+                  <ProjectField
+                    label="Area"
+                    value={`${Number(project.area_km2).toLocaleString()} km²`}
+                  />
+                ) : null}
+                {category === "mine" && project.reserve_kg !== null ? (
+                  <ProjectField
+                    label="Estimated reserve"
+                    value={`${Number(project.reserve_kg).toLocaleString()} kg`}
+                  />
+                ) : null}
               </OverviewGroup>
-            </div>
+            ) : null}
+
+            <OverviewGroup icon={CalendarDays} title="Links & timeline">
+              {urlLabel && project.url ? (
+                <ProjectLinkField label={urlLabel} value={project.url} />
+              ) : null}
+              {roles.includes("admin") && category === "website" && project.repository_url ? (
+                <ProjectLinkField label="Git repository URL" value={project.repository_url} />
+              ) : null}
+              <ProjectField label="Created" value={formatDateTime(project.created_at)} />
+              <ProjectField label="Last updated" value={formatDateTime(project.updated_at)} />
+            </OverviewGroup>
           </div>
         </TabsContent>
 
         <TabsContent value="progress" className="space-y-4">
-          <div className="rounded-2xl bg-card p-5 shadow-sm">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="logbook-label">{t("To-do progress")}</p>
-                <p className="mt-1 text-2xl font-semibold">
-                  {taskProgress}% {t("complete")}
-                </p>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {language === "zh"
-                  ? `已完成 ${completedTaskCount}/${tasks.data?.length ?? 0} 项任务 · 已达成 ${achievedMilestoneCount}/${milestones.data?.length ?? 0} 个里程碑`
-                  : `${completedTaskCount} of ${tasks.data?.length ?? 0} tasks completed · ${achievedMilestoneCount} of ${milestones.data?.length ?? 0} milestones achieved`}
+          <div className="rounded-2xl bg-card p-4 shadow-sm sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="logbook-label">{t("To-do progress")}</p>
+              <p className="whitespace-nowrap text-lg font-semibold sm:text-xl">
+                {taskProgress}% {t("complete")}
               </p>
             </div>
             <Progress
               value={taskProgress}
-              className="mt-4"
+              className="mt-3"
               aria-label={t("Project task progress")}
             />
           </div>
 
-          <div className="grid items-start gap-4 xl:grid-cols-2">
-            <section className="rounded-2xl bg-card p-5 shadow-sm">
-              <div className="flex flex-row flex-wrap items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 text-base font-semibold">
-                  <ListTodo className="size-5" />
-                  {t("To-do list")}
-                </h2>
+          <section className="rounded-2xl bg-card p-4 shadow-sm sm:p-5">
+            <Tabs defaultValue="open" className="space-y-4">
+              <TabsList className="grid h-auto w-full grid-cols-3">
+                <TabsTrigger value="open" className="min-w-0 px-2">
+                  <span className="truncate">{t("To do")}</span>
+                  <span className="ml-1">({openTasks.length})</span>
+                </TabsTrigger>
+                <TabsTrigger value="completed" className="min-w-0 px-2">
+                  <span className="truncate">{t("Completed")}</span>
+                  <span className="ml-1">({completedTasks.length})</span>
+                </TabsTrigger>
+                <TabsTrigger value="milestones" className="min-w-0 px-2">
+                  <span className="truncate">{t("Achievements")}</span>
+                  <span className="ml-1">({milestones.data?.length ?? 0})</span>
+                </TabsTrigger>
+              </TabsList>
+
+              {tasks.error ? (
+                <InlineError message={progressErrorMessage(tasks.error, "to-do list")} />
+              ) : null}
+              {tasks.isLoading ? (
+                <p className="text-sm text-muted-foreground">{t("Loading to-dos…")}</p>
+              ) : null}
+
+              <TabsContent value="open" className="space-y-3">
                 {canManageProject ? (
-                  <Button type="button" size="sm" onClick={() => setTaskOpen(true)}>
-                    <Plus />
-                    {t("Add to-do")}
-                  </Button>
-                ) : null}
-              </div>
-              <div className="mt-4">
-                {tasks.error ? (
-                  <InlineError message={progressErrorMessage(tasks.error, "to-do list")} />
-                ) : null}
-                {tasks.isLoading ? (
-                  <p className="text-sm text-muted-foreground">{t("Loading to-dos…")}</p>
+                  <div className="flex justify-end">
+                    <Button type="button" size="sm" onClick={() => setTaskOpen(true)}>
+                      <Plus />
+                      {t("Add to-do")}
+                    </Button>
+                  </div>
                 ) : null}
                 {!tasks.isLoading && !tasks.error ? (
-                  <Tabs defaultValue="open" className="space-y-4">
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="open">
-                        {t("To do")} ({openTasks.length})
-                      </TabsTrigger>
-                      <TabsTrigger value="completed">
-                        {t("Completed")} ({completedTasks.length})
-                      </TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="open">
-                      <ProjectTaskList
-                        items={openTasks}
-                        peopleById={peopleById}
-                        userId={user?.id}
-                        canManage={canManageProject}
-                        canDelete={roles.includes("admin")}
-                        pending={toggleTask.isPending || deleteTask.isPending}
-                        emptyMessage="No open to-dos."
-                        onToggle={(task) =>
-                          toggleTask.mutate({ id: task.id, isCompleted: !task.is_completed })
-                        }
-                        onDelete={setDeleteTaskId}
-                      />
-                    </TabsContent>
-                    <TabsContent value="completed">
-                      <ProjectTaskList
-                        items={completedTasks}
-                        peopleById={peopleById}
-                        userId={user?.id}
-                        canManage={canManageProject}
-                        canDelete={roles.includes("admin")}
-                        pending={toggleTask.isPending || deleteTask.isPending}
-                        emptyMessage="No completed to-dos."
-                        onToggle={(task) =>
-                          toggleTask.mutate({ id: task.id, isCompleted: !task.is_completed })
-                        }
-                        onDelete={setDeleteTaskId}
-                      />
-                    </TabsContent>
-                  </Tabs>
+                  <ProjectTaskList
+                    items={openTasks}
+                    peopleById={peopleById}
+                    userId={user?.id}
+                    canManage={canManageProject}
+                    canDelete={roles.includes("admin")}
+                    pending={toggleTask.isPending || deleteTask.isPending}
+                    emptyMessage="No open to-dos."
+                    onToggle={(task) =>
+                      toggleTask.mutate({ id: task.id, isCompleted: !task.is_completed })
+                    }
+                    onDelete={setDeleteTaskId}
+                  />
                 ) : null}
-              </div>
-            </section>
+              </TabsContent>
 
-            <section className="rounded-2xl bg-card p-5 shadow-sm">
-              <div className="flex flex-row flex-wrap items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 text-base font-semibold">
-                  <Flag className="size-5" />
-                  {t("Achievement milestones")}
-                </h2>
+              <TabsContent value="completed" className="space-y-3">
                 {canManageProject ? (
-                  <Button type="button" size="sm" variant="outline" onClick={openMilestoneDialog}>
-                    <Plus />
-                    {t("Add milestone")}
-                  </Button>
+                  <div className="flex justify-end">
+                    <Button type="button" size="sm" onClick={() => setTaskOpen(true)}>
+                      <Plus />
+                      {t("Add to-do")}
+                    </Button>
+                  </div>
                 ) : null}
-              </div>
-              <div className="mt-4">
+                {!tasks.isLoading && !tasks.error ? (
+                  <ProjectTaskList
+                    items={completedTasks}
+                    peopleById={peopleById}
+                    userId={user?.id}
+                    canManage={canManageProject}
+                    canDelete={roles.includes("admin")}
+                    pending={toggleTask.isPending || deleteTask.isPending}
+                    emptyMessage="No completed to-dos."
+                    onToggle={(task) =>
+                      toggleTask.mutate({ id: task.id, isCompleted: !task.is_completed })
+                    }
+                    onDelete={setDeleteTaskId}
+                  />
+                ) : null}
+              </TabsContent>
+
+              <TabsContent value="milestones" className="space-y-3">
+                {canManageProject ? (
+                  <div className="flex justify-end">
+                    <Button type="button" size="sm" variant="outline" onClick={openMilestoneDialog}>
+                      <Plus />
+                      {t("Add milestone")}
+                    </Button>
+                  </div>
+                ) : null}
                 {milestones.error ? (
                   <InlineError
                     message={progressErrorMessage(milestones.error, "achievement milestones")}
@@ -1268,64 +1471,72 @@ function ProjectDetailPage() {
                     {t("No achievement milestones yet.")}
                   </p>
                 ) : null}
-              </div>
-            </section>
-          </div>
+              </TabsContent>
+            </Tabs>
+          </section>
         </TabsContent>
 
-        <TabsContent value="staff">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-3">
-              <CardTitle>{t("Assigned staff")}</CardTitle>
-              {canManageStaff ? (
-                <Button type="button" size="sm" onClick={() => setStaffOpen(true)}>
-                  <UserPlus />
-                  {t("Add staff")}
-                </Button>
-              ) : null}
-            </CardHeader>
-            <CardContent className="divide-y divide-border">
-              {memberships.error || people.error ? (
-                <InlineError message={memberships.error?.message ?? people.error?.message ?? ""} />
-              ) : null}
-              {assignedPeople.map((person) => (
-                <div
-                  key={person.id}
-                  className="flex flex-wrap items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"
-                >
+        <TabsContent value="staff" className="space-y-4">
+          <div className="flex items-center justify-between gap-3 px-1">
+            <h2 className="text-lg font-semibold">{t("Assigned staff")}</h2>
+            {canManageStaff ? (
+              <Button type="button" size="sm" onClick={() => setStaffOpen(true)}>
+                <UserPlus />
+                {t("Add staff")}
+              </Button>
+            ) : null}
+          </div>
+          {memberships.error || people.error ? (
+            <InlineError message={memberships.error?.message ?? people.error?.message ?? ""} />
+          ) : null}
+          <div className="space-y-3">
+            {assignedPeople.map((person) => (
+              <div
+                key={person.id}
+                className="relative flex cursor-pointer flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 shadow-sm transition-colors hover:bg-muted/20"
+              >
+                <button
+                  type="button"
+                  className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  aria-label={`${t("View team member details")}: ${personDisplayName(person, t("Unknown user"))}`}
+                  onClick={() => setSelectedTeamMember(person)}
+                />
+                <div className="pointer-events-none relative z-10 flex min-w-0 items-center gap-3">
+                  <Avatar className="size-10 shrink-0 border border-border">
+                    <AvatarImage src={person.avatar_url ?? undefined} alt="" />
+                    <AvatarFallback className="text-xs font-semibold">
+                      {personInitials(person.full_name, person.email)}
+                    </AvatarFallback>
+                  </Avatar>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">
-                      {person.full_name || staffLoginLabel(person.email)}
+                    <p className="truncate text-sm font-medium">
+                      {personDisplayName(person, t("Unknown user"))}
                     </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {staffLoginLabel(person.email)}
-                      {person.job_title ? ` · ${person.job_title}` : ""}
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {[person.email ? staffLoginLabel(person.email) : null, person.job_title]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={person.is_active ? "outline" : "secondary"}>
-                      {t(person.is_active ? "Active" : "Inactive")}
-                    </Badge>
-                    {canManageStaff ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        disabled={removeMember.isPending}
-                        onClick={() => removeMember.mutate(person.id)}
-                      >
-                        {t("Remove")}
-                      </Button>
-                    ) : null}
                   </div>
                 </div>
-              ))}
-              {!memberships.isLoading && assignedPeople.length === 0 ? (
-                <p className="py-4 text-sm text-muted-foreground">{t("No staff assigned yet.")}</p>
-              ) : null}
-            </CardContent>
-          </Card>
+                {canManageStaff ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="relative z-20 text-destructive hover:text-destructive"
+                    disabled={removeMember.isPending}
+                    onClick={() => setRemoveStaffTarget(person)}
+                  >
+                    {t("Remove")}
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+            {!memberships.isLoading && assignedPeople.length === 0 ? (
+              <p className="py-4 text-sm text-muted-foreground">{t("No staff assigned yet.")}</p>
+            ) : null}
+          </div>
         </TabsContent>
 
         <TabsContent value="activity">
@@ -1334,8 +1545,10 @@ function ProjectDetailPage() {
               <CardTitle>{t("Project activity")}</CardTitle>
               <p className="text-sm text-muted-foreground">
                 {project.repository_url
-                  ? t("Work submissions and recent public GitHub commits, newest first.")
-                  : t("Work submitted for this project and visible to your account.")}
+                  ? t(
+                      "Project work logs and public GitHub commits, newest first. This is not website visitor analytics.",
+                    )
+                  : t("Project work logs visible to your account, newest first.")}
               </p>
             </CardHeader>
             <CardContent className="divide-y divide-border">
@@ -1367,7 +1580,29 @@ function ProjectDetailPage() {
                                 {event.author_name || "GitHub"}
                               </p>
                             </div>
-                            <Badge variant="outline">{t("Git commit")}</Badge>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Badge variant="outline">{t("Git commit")}</Badge>
+                              {canDeleteActivity ? (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="size-8 text-muted-foreground hover:text-destructive"
+                                  aria-label={t("Delete activity")}
+                                  title={t("Delete activity")}
+                                  disabled={deleteActivity.isPending}
+                                  onClick={() =>
+                                    setDeleteActivityTarget({
+                                      kind: "git_event",
+                                      id: event.id,
+                                      label: event.title,
+                                    })
+                                  }
+                                >
+                                  <Trash2 />
+                                </Button>
+                              ) : null}
+                            </div>
                           </div>
                           {event.description ? (
                             <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
@@ -1399,50 +1634,75 @@ function ProjectDetailPage() {
                 const author = peopleById.get(report.user_id);
                 const open = () => setSelectedReportId(report.id);
                 return (
-                  <div
-                    key={`report-${item.id}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={open}
-                    onKeyDown={rowKeyHandler(open)}
-                    className="flex cursor-pointer items-start gap-3 py-4 text-left first:pt-0 last:pb-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <Avatar className="mt-0.5 size-9 shrink-0 border border-border">
-                      <AvatarImage src={author?.avatar_url ?? undefined} alt="" />
-                      <AvatarFallback className="text-xs font-semibold">
-                        {personInitials(author?.full_name, author?.email)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                          {report.title}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-1.5">
-                          {report.supersedes_report_id ? (
-                            <Badge variant="outline">{t("Correction")}</Badge>
-                          ) : null}
-                          <Badge className={STATUS_TONE[report.work_status]}>
-                            {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
-                          </Badge>
-                        </span>
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground/80">
-                          {author?.full_name || author?.email || t("Unknown user")}
-                        </span>{" "}
-                        · {reportStamp(report)} · {reportMeta(report, project.name, t)}
-                      </p>
-                      <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                        {report.content}
-                      </p>
-                      {report.image_urls?.length ? (
-                        <div className="mt-2">
-                          <WorkLogImages images={report.image_urls} compact onOpen={setLightbox} />
+                  <article key={`report-${item.id}`} className="relative py-4 first:pt-0 last:pb-0">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={open}
+                      onKeyDown={rowKeyHandler(open)}
+                      className={`flex cursor-pointer items-start gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canDeleteActivity ? "pr-10" : ""}`}
+                    >
+                      <Avatar className="mt-0.5 size-9 shrink-0 border border-border">
+                        <AvatarImage src={author?.avatar_url ?? undefined} alt="" />
+                        <AvatarFallback className="text-xs font-semibold">
+                          {personInitials(author?.full_name, author?.email)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                            {report.title}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            {report.supersedes_report_id ? (
+                              <Badge variant="outline">{t("Correction")}</Badge>
+                            ) : null}
+                            <Badge className={STATUS_TONE[report.work_status]}>
+                              {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
+                            </Badge>
+                          </span>
                         </div>
-                      ) : null}
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground/80">
+                            {author?.full_name || author?.email || t("Unknown user")}
+                          </span>{" "}
+                          · {reportStamp(report)} · {reportMeta(report, project.name, t)}
+                        </p>
+                        <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                          {report.content}
+                        </p>
+                        {report.image_urls?.length ? (
+                          <div className="mt-2">
+                            <WorkLogImages
+                              images={report.image_urls}
+                              compact
+                              onOpen={setLightbox}
+                            />
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
+                    {canDeleteActivity ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="absolute right-0 top-2 size-8 text-muted-foreground hover:text-destructive"
+                        aria-label={t("Delete activity")}
+                        title={t("Delete activity")}
+                        disabled={deleteActivity.isPending}
+                        onClick={() =>
+                          setDeleteActivityTarget({
+                            kind: "report",
+                            id: report.id,
+                            label: report.title,
+                          })
+                        }
+                      >
+                        <Trash2 />
+                      </Button>
+                    ) : null}
+                  </article>
                 );
               })}
               {!reports.isLoading && !gitEvents.isLoading && activityItems.length === 0 ? (
@@ -1457,13 +1717,15 @@ function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="expenses">
-          <Card>
-            <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+          <div className="space-y-4">
+            <div className="flex flex-row flex-wrap items-start justify-between gap-3 px-1">
               <div>
-                <CardTitle>{t("Created expenses")}</CardTitle>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {t("Current fund")}: {currentFundLabel}
-                </p>
+                <h2 className="text-lg font-semibold">{t("Created expenses")}</h2>
+                {currentFund !== null ? (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {t("Current fund")}: {t(currentFundLabel)}
+                  </p>
+                ) : null}
               </div>
               {canSubmitExpenses ? (
                 <Button type="button" size="sm" onClick={() => setExpenseOpen(true)}>
@@ -1476,15 +1738,15 @@ function ProjectDetailPage() {
                   </Link>
                 </Button>
               )}
-            </CardHeader>
-            <CardContent className="divide-y divide-border">
-              {expenses.error ? <InlineError message={expenses.error.message} /> : null}
+            </div>
+            {expenses.error ? <InlineError message={expenses.error.message} /> : null}
+            <div className="space-y-3">
               {(expenses.data ?? []).map((expense) => {
                 const submitter = peopleById.get(expense.submitted_by);
                 return (
                   <article
                     key={expense.id}
-                    className="flex flex-wrap items-start justify-between gap-4 py-4 first:pt-0 last:pb-0"
+                    className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-sm"
                   >
                     <div className="min-w-0 flex-1">
                       <h2 className="text-sm font-medium">{expense.description}</h2>
@@ -1522,8 +1784,8 @@ function ProjectDetailPage() {
               {!expenses.isLoading && !expenses.error && (expenses.data ?? []).length === 0 ? (
                 <p className="py-4 text-sm text-muted-foreground">{t("No visible expenses.")}</p>
               ) : null}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </>
@@ -1544,14 +1806,12 @@ function SummaryCard({
   const { t } = useLanguage();
   return (
     <Card className={`border-transparent ${tone}`}>
-      <CardContent className="flex items-start justify-between gap-3 p-4 sm:p-5">
-        <div className="min-w-0">
-          <p className="logbook-label">{t(label)}</p>
-          <p className="mt-2 break-words text-lg font-semibold">{t(value)}</p>
-        </div>
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
-          <Icon className="size-4" />
-        </div>
+      <CardContent className="p-4 sm:p-5">
+        <p className="logbook-label flex items-center gap-1.5">
+          <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+          <span>{t(label)}</span>
+        </p>
+        <p className="mt-2 break-words text-lg font-semibold">{t(value)}</p>
       </CardContent>
     </Card>
   );
@@ -1601,15 +1861,36 @@ function OverviewGroup({
 }) {
   const { t } = useLanguage();
   return (
-    <section className="rounded-2xl bg-muted/45 p-5">
-      <h3 className="flex items-center gap-2 text-sm font-semibold">
-        <span className="flex size-8 items-center justify-center rounded-lg bg-card text-primary shadow-sm">
-          <Icon className="size-4" aria-hidden="true" />
-        </span>
-        {t(title)}
-      </h3>
-      <dl className="mt-5 grid gap-x-5 gap-y-4 sm:grid-cols-2">{children}</dl>
+    <section className="overflow-hidden rounded-2xl bg-muted/45 shadow-sm">
+      <header className="border-b border-border/60 bg-card/60 px-5 py-4">
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <Icon className="size-4 shrink-0 text-primary" aria-hidden="true" />
+          {t(title)}
+        </h3>
+      </header>
+      <dl className="grid gap-x-5 gap-y-4 p-5 sm:grid-cols-2">{children}</dl>
     </section>
+  );
+}
+
+function MemberProjectSummary({ project, label }: { project: ProjectRow; label?: string }) {
+  const { t } = useLanguage();
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+      {label ? <p className="logbook-label mb-2">{t(label)}</p> : null}
+      <p className="truncate text-sm font-semibold">{project.name}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Badge variant="secondary">
+          {t(PROJECT_CATEGORY_LABEL[project.category] ?? project.category)}
+        </Badge>
+        <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
+          {t(STATUS_LABEL[project.status] ?? project.status)}
+        </Badge>
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        {t("Last updated")}: {formatDateTime(project.updated_at)}
+      </p>
+    </div>
   );
 }
 
@@ -1678,8 +1959,8 @@ function ProjectTaskList({
                 <span>
                   {assignee
                     ? language === "zh"
-                      ? `已分配给 ${assignee.full_name || staffLoginLabel(assignee.email)}`
-                      : `Assigned to ${assignee.full_name || staffLoginLabel(assignee.email)}`
+                      ? `已分配给 ${personDisplayName(assignee, t("Unknown user"))}`
+                      : `Assigned to ${personDisplayName(assignee, t("Unknown user"))}`
                     : t("Unassigned")}
                 </span>
                 {task.due_date ? (

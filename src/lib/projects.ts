@@ -37,6 +37,7 @@ export const PROJECT_URL_LABEL: Record<string, string | undefined> = {
 
 export const PROJECT_STATUS_LABEL: Record<string, string> = {
   active: "Active",
+  maintenance: "Ongoing maintenance",
   paused: "Paused",
   completed: "Completed",
   archived: "Archived",
@@ -45,6 +46,7 @@ export const PROJECT_STATUS_LABEL: Record<string, string> = {
 /** Badge tones per project status, drawn from the logbook stat palette. */
 export const PROJECT_STATUS_TONE: Record<string, string> = {
   active: "border-transparent bg-stat-teal text-secondary-foreground",
+  maintenance: "border-transparent bg-stat-copper text-accent-foreground",
   paused: "border-transparent bg-stat-gold text-foreground",
   completed: "border-transparent bg-stat-violet text-foreground",
   archived: "border-transparent bg-muted text-muted-foreground",
@@ -53,10 +55,33 @@ export const PROJECT_STATUS_TONE: Record<string, string> = {
 /** Display order on the projects list: live work first, archived last. */
 export const PROJECT_STATUS_ORDER: Record<string, number> = {
   active: 0,
-  paused: 1,
-  completed: 2,
-  archived: 3,
+  maintenance: 1,
+  paused: 2,
+  completed: 3,
+  archived: 4,
 };
+
+export function isProjectWorkEnabled(status: string) {
+  return status === "active" || status === "maintenance";
+}
+
+/** Stable, readable URL key. The UUID suffix keeps projects with the same name distinct. */
+export function projectSlug(project: {
+  id: string;
+  name: string;
+  project_code?: string | null;
+  slug?: string | null;
+}) {
+  if (project.slug) return project.slug;
+  const source = project.project_code?.trim() || project.name;
+  const base = source
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return `${base || "project"}-${project.id.slice(0, 8)}`;
+}
 
 export const MINING_METHOD_LABEL: Record<string, string> = {
   alluvial: "Alluvial",

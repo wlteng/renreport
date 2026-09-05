@@ -13,22 +13,24 @@ DECLARE
   expected_member_manage BOOLEAN;
   can_see_own BOOLEAN;
   can_see_other BOOLEAN;
+  visible_directory_count INTEGER;
+  visible_other_profile_count INTEGER;
+  exposed_other_email_count INTEGER;
+  own_directory_email TEXT;
   visible_audit_count INTEGER;
   affected_rows INTEGER;
   insert_failed BOOLEAN;
   inserted_report_id UUID;
 BEGIN
   FOR persona IN
-    SELECT profile.id, profile.email, user_role.role
-    FROM public.profiles AS profile
-    JOIN public.user_roles AS user_role ON user_role.user_id = profile.id
-    WHERE profile.id IN (
-      '10000000-0000-4000-8000-000000000001',
-      '10000000-0000-4000-8000-000000000002',
-      '10000000-0000-4000-8000-000000000003',
-      '10000000-0000-4000-8000-000000000004'
-    )
-    ORDER BY profile.email
+    SELECT *
+    FROM (VALUES
+      ('10000000-0000-4000-8000-000000000001'::uuid, 'admin@renreport.test', 'admin'::public.app_role),
+      ('10000000-0000-4000-8000-000000000002'::uuid, 'boss@renreport.test', 'boss'::public.app_role),
+      ('10000000-0000-4000-8000-000000000003'::uuid, 'manager@renreport.test', 'manager'::public.app_role),
+      ('10000000-0000-4000-8000-000000000004'::uuid, 'staff@renreport.test', 'staff'::public.app_role)
+    ) AS seeded(id, email, role)
+    ORDER BY seeded.email
   LOOP
     PERFORM set_config('request.jwt.claim.sub', persona.id::text, true);
     PERFORM set_config(
@@ -43,6 +45,32 @@ BEGIN
     expected_matrix_write := public.has_permission(persona.id, 'manage_permissions');
     expected_member_manage := persona.role = 'admin'::public.app_role
       OR persona.id = '10000000-0000-4000-8000-000000000002'::uuid;
+
+    SELECT count(*)
+    INTO visible_other_profile_count
+    FROM public.profiles
+    WHERE id <> persona.id;
+    IF (visible_other_profile_count > 0) IS DISTINCT FROM (persona.role = 'admin'::public.app_role) THEN
+      RAISE EXCEPTION '% direct profile visibility leaked private rows', persona.email;
+    END IF;
+
+    SELECT count(*), count(*) FILTER (WHERE id <> persona.id AND email IS NOT NULL)
+    INTO visible_directory_count, exposed_other_email_count
+    FROM public.people_directory();
+    IF visible_directory_count <> 4 THEN
+      RAISE EXCEPTION '% cannot read the complete staff directory', persona.email;
+    END IF;
+    IF (exposed_other_email_count > 0) IS DISTINCT FROM (persona.role = 'admin'::public.app_role) THEN
+      RAISE EXCEPTION '% directory email visibility does not match admin-only access', persona.email;
+    END IF;
+
+    SELECT email
+    INTO own_directory_email
+    FROM public.people_directory()
+    WHERE id = persona.id;
+    IF own_directory_email IS DISTINCT FROM persona.email THEN
+      RAISE EXCEPTION '% cannot read their own directory email', persona.email;
+    END IF;
 
     SELECT EXISTS (
       SELECT 1 FROM public.reports WHERE user_id = persona.id

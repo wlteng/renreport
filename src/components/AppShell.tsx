@@ -45,6 +45,9 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { to: string; label: string; icon: LucideIcon };
 
+const APP_VERSION = __APP_VERSION__;
+const PROJECT_DETAIL_PATH = /^\/projects\/[^/]+\/?$/;
+
 function navItemsFor(
   roles: AppRole[],
   permissions: PermissionKey[] | undefined,
@@ -59,12 +62,34 @@ function navItemsFor(
   return items;
 }
 
-export function PageHeader({ title, action }: { title: string; action?: ReactNode }) {
+export function PageHeader({
+  title,
+  action,
+  className,
+  leading,
+  titleAfter,
+  titleContent,
+}: {
+  title: string;
+  action?: ReactNode;
+  className?: string;
+  leading?: ReactNode;
+  titleAfter?: ReactNode;
+  titleContent?: ReactNode;
+}) {
   const { t } = useLanguage();
   return (
-    <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t(title)}</h1>
+    <header className={cn("mb-6 flex flex-wrap items-center justify-between gap-3", className)}>
+      <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+        {leading}
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {titleContent ?? (
+            <h1 className="min-w-0 text-2xl font-semibold tracking-tight text-foreground">
+              {t(title)}
+            </h1>
+          )}
+          {titleAfter}
+        </div>
       </div>
       {action}
     </header>
@@ -78,6 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const { language, setLanguage, t } = useLanguage();
   const items = navItemsFor(roles, permissions, t);
+  const isProjectDetail = PROJECT_DETAIL_PATH.test(location.pathname);
 
   async function signOut() {
     await queryClient.cancelQueries();
@@ -95,10 +121,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="px-3 pb-6">
           <div className="flex items-center gap-2 text-base font-semibold tracking-tight">
             <img src="/icons/icon-192.png" alt="" className="size-8 rounded-lg" />
-            {t("Ren Report")}
-          </div>
-          <div className="logbook-label mt-1">
-            {roles.length ? t(ROLE_LABEL[highestRole(roles)]) : "—"}
+            <div className="min-w-0">
+              <div className="truncate">{t("Ren Report")}</div>
+              <div className="mt-0.5 text-[10px] font-normal tracking-normal text-muted-foreground">
+                {APP_VERSION}
+              </div>
+            </div>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5">
@@ -119,97 +147,114 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="border-t border-sidebar-border pt-3">
-          <div className="truncate px-3 pb-2 text-xs text-muted-foreground">
-            {profile?.full_name || (profile?.email ? staffLoginLabel(profile.email) : null)}
+          <div className="px-3 pb-2">
+            <div className="truncate text-xs text-foreground">
+              {profile?.full_name || (profile?.email ? staffLoginLabel(profile.email) : null)}
+            </div>
+            <div className="logbook-label mt-1">
+              {roles.length ? t(ROLE_LABEL[highestRole(roles)]) : t("No role assigned")}
+            </div>
           </div>
         </div>
       </aside>
 
-      <header className="sticky top-0 z-40 flex min-h-[calc(4rem+env(safe-area-inset-top,0px))] items-center justify-between border-b border-border bg-card/90 pb-0 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pt-[env(safe-area-inset-top,0px)] backdrop-blur lg:ml-60 lg:px-10">
-        <div className="flex items-center gap-2 text-sm font-semibold tracking-tight lg:hidden">
-          <img src="/icons/icon-192.png" alt="" className="size-7 rounded-md" />
-          {t("Ren Report")}
-        </div>
-        <div className="hidden text-sm text-muted-foreground lg:block">
-          {t("Mining operations logbook")}
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={t("Open profile menu")}
-              className="flex items-center gap-2 rounded-full outline-none ring-offset-background transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <Avatar className="size-9 border border-border">
-                <AvatarImage src={profile?.avatar_url ?? undefined} alt="" />
-                <AvatarFallback className="text-xs font-semibold">
-                  {personInitials(profile?.full_name, profile?.email)}
-                </AvatarFallback>
-              </Avatar>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuLabel className="font-normal">
-              <p className="truncate text-sm font-medium text-foreground">
-                {profile?.full_name || t("Your account")}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                {profile?.email ? staffLoginLabel(profile.email) : null}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {roles.length ? t(ROLE_LABEL[highestRole(roles)]) : t("No role assigned")}
-              </p>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {roles.includes("admin") ? (
+      {!isProjectDetail ? (
+        <header className="sticky top-0 z-40 flex min-h-[calc(4rem+env(safe-area-inset-top,0px))] items-center justify-between border-b border-border bg-card/90 pb-0 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pt-[env(safe-area-inset-top,0px)] backdrop-blur lg:ml-60 lg:px-10">
+          <div className="flex items-center gap-2 text-sm font-semibold tracking-tight lg:hidden">
+            <img src="/icons/icon-192.png" alt="" className="size-7 rounded-md" />
+            <div className="leading-none">
+              <div>{t("Ren Report")}</div>
+              <div className="mt-1 text-[9px] font-normal text-muted-foreground">{APP_VERSION}</div>
+            </div>
+          </div>
+          <div className="hidden text-sm text-muted-foreground lg:block">
+            {t("Mining operations logbook")}
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("Open profile menu")}
+                className="flex items-center gap-2 rounded-full outline-none ring-offset-background transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <Avatar className="size-9 border border-border">
+                  <AvatarImage src={profile?.avatar_url ?? undefined} alt="" />
+                  <AvatarFallback className="text-xs font-semibold">
+                    {personInitials(profile?.full_name, profile?.email)}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="font-normal">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {profile?.full_name || t("Your account")}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {profile?.email ? staffLoginLabel(profile.email) : null}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {roles.length ? t(ROLE_LABEL[highestRole(roles)]) : t("No role assigned")}
+                </p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {roles.includes("admin") ? (
+                <DropdownMenuItem asChild>
+                  <Link to="/admin" search={{ section: "people" }}>
+                    <Users />
+                    {t("Admin workspace")}
+                  </Link>
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem asChild>
-                <Link to="/admin" search={{ section: "people" }}>
-                  <Users />
-                  {t("Admin workspace")}
+                <Link to="/profile">
+                  <Settings />
+                  {t("Profile")}
                 </Link>
               </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuItem asChild>
-              <Link to="/profile">
-                <Settings />
-                {t("Profile")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Languages />
-                {t("Language")}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuSubContent>
-                  <DropdownMenuRadioGroup
-                    value={language}
-                    onValueChange={(value) => {
-                      if (value === "en" || value === "zh") setLanguage(value);
-                    }}
-                  >
-                    <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="zh">中文</DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuSubContent>
-              </DropdownMenuPortal>
-            </DropdownMenuSub>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-              onSelect={() => void signOut()}
-            >
-              <LogOut />
-              {t("Sign out")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </header>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Languages />
+                  {t("Language")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup
+                      value={language}
+                      onValueChange={(value) => {
+                        if (value === "en" || value === "zh") setLanguage(value);
+                      }}
+                    >
+                      <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="zh">中文</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                onSelect={() => void signOut()}
+              >
+                <LogOut />
+                {t("Sign out")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
+      ) : null}
 
-      <main className="pb-28 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pt-6 lg:ml-60 lg:px-10 lg:pb-12">
+      <main
+        className={cn(
+          "pb-28 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] lg:ml-60 lg:px-10 lg:pb-12",
+          isProjectDetail ? "pt-[calc(1.5rem+env(safe-area-inset-top,0px))]" : "pt-6",
+        )}
+      >
         <div className="mx-auto w-full max-w-5xl">
           {children}
-          {location.pathname !== "/theme-preview" ? <PageAccessAlert /> : null}
+          {roles.includes("admin") && location.pathname !== "/theme-preview" ? (
+            <PageAccessAlert />
+          ) : null}
         </div>
       </main>
 

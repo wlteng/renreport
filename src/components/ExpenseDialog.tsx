@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useActiveProjects } from "@/hooks/useData";
+import { useWorkEnabledProjects } from "@/hooks/useData";
 import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
@@ -53,7 +53,7 @@ export function ExpenseDialog({
 }: ExpenseDialogProps) {
   const { user } = useMe();
   const { t } = useLanguage();
-  const activeProjects = useActiveProjects(!lockProject);
+  const workEnabledProjects = useWorkEnabledProjects(!lockProject);
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState(defaultProjectId);
   const [expenseDate, setExpenseDate] = useState(todayForDateInput);
@@ -143,7 +143,7 @@ export function ExpenseDialog({
                   onChange={(event) => setProjectId(event.target.value)}
                 >
                   <option value="">{t("Choose a project")}</option>
-                  {(activeProjects.data ?? []).map((project) => (
+                  {(workEnabledProjects.data ?? []).map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}
                     </option>

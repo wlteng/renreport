@@ -1,10 +1,9 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.112.4";
 import { z } from "npm:zod@3.24.2";
 
-// Deletes a work log (author, inside its edit window) or a whole project (admin)
-// together with every photo stored for the affected work logs. Row-level
-// security still decides whether the row may go; this function only adds the
-// storage cleanup that SQL alone cannot do.
+// Deletes a work log (author inside the edit window, or admin), hides a synced
+// GitHub activity item (admin), or deletes a whole project (admin). Work-log
+// photos are removed with their database records.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,7 +15,7 @@ const REPORT_IMAGE_BUCKET = "report-images";
 const REMOVE_BATCH = 100;
 
 const requestSchema = z.object({
-  kind: z.enum(["report", "project"]),
+  kind: z.enum(["report", "project", "git_event"]),
   id: z.string().uuid(),
 });
 
@@ -90,20 +89,33 @@ Deno.serve(async (request) => {
   const { data: caller, error: callerError } = await callerClient.auth.getUser(token);
   if (callerError || !caller.user) return json({ error: "Invalid or expired session" }, 401);
 
+  const [{ data: adminRole }, { data: callerProfile }] = await Promise.all([
+    adminClient
+      .from("user_roles")
+      .select("id")
+      .eq("user_id", caller.user.id)
+      .eq("role", "admin")
+      .maybeSingle(),
+    adminClient.from("profiles").select("is_active").eq("id", caller.user.id).maybeSingle(),
+  ]);
+  const isActiveAdmin = !!adminRole && !!callerProfile?.is_active;
+
   if (parsed.data.kind === "report") {
-    const { data: report, error: reportError } = await callerClient
+    const { data: report, error: reportError } = await adminClient
       .from("reports")
-      .select("id, user_id")
+      .select("id, user_id, project_id, title")
       .eq("id", parsed.data.id)
       .maybeSingle();
     if (reportError) return json({ error: "Could not load work log" }, 500);
     if (!report) return json({ error: "Work log not found" }, 404);
-    if (report.user_id !== caller.user.id) {
+    if (!isActiveAdmin && report.user_id !== caller.user.id) {
       return json({ error: "Only the author can delete this work log" }, 403);
     }
 
-    // Row-level security enforces the one-hour edit window and the submit capability.
-    const { data: deleted, error: deleteError } = await callerClient
+    // RLS keeps the author's edit window in force. Active admins use the service
+    // client after the explicit role check above so they can moderate any entry.
+    const deletionClient = isActiveAdmin ? adminClient : callerClient;
+    const { data: deleted, error: deleteError } = await deletionClient
       .from("reports")
       .delete()
       .eq("id", report.id)
@@ -113,23 +125,59 @@ Deno.serve(async (request) => {
       return json({ error: "This work log can no longer be deleted" }, 403);
     }
 
+    let files = 0;
+    let warning: string | undefined;
     try {
-      const files = await purgeReportFolders(adminClient, [
+      files = await purgeReportFolders(adminClient, [
         { userId: report.user_id, reportId: report.id },
       ]);
-      return json({ deleted: true, files });
     } catch {
-      return json({ deleted: true, files: 0, warning: "Work log deleted but some photos remain" });
+      warning = "Work log deleted but some photos remain";
     }
+
+    if (isActiveAdmin) {
+      await adminClient.from("admin_audit_log").insert({
+        event_type: "project_activity_deleted",
+        actor_id: caller.user.id,
+        project_id: report.project_id,
+        summary: `Deleted work-log activity "${report.title}"`,
+        metadata: { activity_kind: "report", activity_id: report.id, photos: files },
+      });
+    }
+
+    return json({ deleted: true, files, warning });
   }
 
-  const { data: adminRole } = await adminClient
-    .from("user_roles")
-    .select("id")
-    .eq("user_id", caller.user.id)
-    .eq("role", "admin")
-    .maybeSingle();
-  if (!adminRole) return json({ error: "Only admins can delete projects" }, 403);
+  if (parsed.data.kind === "git_event") {
+    if (!isActiveAdmin) return json({ error: "Only admins can delete project activity" }, 403);
+
+    const { data: event, error: eventError } = await adminClient
+      .from("project_git_events")
+      .select("id, project_id, title, deleted_at")
+      .eq("id", parsed.data.id)
+      .maybeSingle();
+    if (eventError) return json({ error: "Could not load project activity" }, 500);
+    if (!event || event.deleted_at) return json({ error: "Project activity not found" }, 404);
+
+    const { error: deleteError } = await adminClient
+      .from("project_git_events")
+      .update({ deleted_at: new Date().toISOString(), deleted_by: caller.user.id })
+      .eq("id", event.id)
+      .is("deleted_at", null);
+    if (deleteError) return json({ error: "Could not delete project activity" }, 500);
+
+    await adminClient.from("admin_audit_log").insert({
+      event_type: "project_activity_deleted",
+      actor_id: caller.user.id,
+      project_id: event.project_id,
+      summary: `Deleted GitHub activity "${event.title}"`,
+      metadata: { activity_kind: "git_event", activity_id: event.id },
+    });
+
+    return json({ deleted: true, files: 0 });
+  }
+
+  if (!isActiveAdmin) return json({ error: "Only admins can delete projects" }, 403);
 
   const { data: project, error: projectError } = await adminClient
     .from("projects")

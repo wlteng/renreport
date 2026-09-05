@@ -37,6 +37,7 @@ import { useMe } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { useLanguage } from "@/lib/i18n";
+import { personDisplayName } from "@/lib/people";
 import {
   hasCapability,
   ROLE_DESCRIPTION,
@@ -684,11 +685,11 @@ function PersonCard({
     <article className="logbook-card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold">
-            {person.full_name || staffLoginLabel(person.email)}
-          </p>
+          <p className="text-sm font-semibold">{personDisplayName(person, t("Unknown user"))}</p>
           <p className="text-xs text-muted-foreground">
-            {[staffLoginLabel(person.email), person.job_title].filter(Boolean).join(" · ")}
+            {[person.email ? staffLoginLabel(person.email) : null, person.job_title]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </div>
         <button
