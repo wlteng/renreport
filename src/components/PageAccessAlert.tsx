@@ -38,7 +38,11 @@ function pageScope(
   if (pathname === "/projects" || pathname.startsWith("/projects/")) {
     return [
       { roles: ["staff"], detail: "See only projects assigned to or owned by them." },
-      { roles: ["admin", "boss", "manager"], detail: "See all projects." },
+      { roles: ["admin", "boss", "general_manager"], detail: "See all projects." },
+      {
+        roles: ["manager"],
+        detail: "Create their own projects and edit the projects they own.",
+      },
       {
         roles: rolesWithCapability(rolePermissions, "manage_projects"),
         detail: "Can create and edit every project.",
@@ -69,8 +73,12 @@ function pageScope(
     return [
       { roles: ["staff"], detail: "See their own expenses and submit to active projects." },
       {
-        roles: ["manager"],
+        roles: ["general_manager"],
         detail: "Can see all expenses when the view-expenses capability is enabled.",
+      },
+      {
+        roles: ["manager"],
+        detail: "See the expenses recorded on the projects they own.",
       },
       {
         roles: ["admin", "boss"],

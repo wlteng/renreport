@@ -79,6 +79,13 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   Admin: "管理员",
   Boss: "老板",
   Manager: "经理",
+  "General Manager": "总经理",
+  "Creates and runs their own projects, including tasks, milestones and staff.":
+    "创建并管理自己的项目，包括任务、里程碑和员工。",
+  "Create their own projects and edit the projects they own.":
+    "可以创建自己的项目，并编辑自己创建的项目。",
+  "See the expenses recorded on the projects they own.": "查看自己项目下记录的费用。",
+  "Manage own projects": "管理自己的项目",
   Staff: "员工",
   "Full control of people, projects, permissions, expenses and compensation.":
     "全面管理人员、项目、权限、费用和薪酬。",
@@ -445,8 +452,8 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "View receipt": "查看收据",
   "Project teams, work activity, expenses and current funds.":
     "查看项目团队、工作动态、费用和当前资金。",
-  "Staff only see projects assigned to them. Admins, bosses and managers can see all projects. Staff assignments are managed inside the project Staff tab by the project creator or an admin.":
-    "员工只能查看分配给自己的项目。管理员、负责人和经理可以查看所有项目。员工分配需在项目详情的“员工”标签中管理，且仅项目创建者或管理员可以操作。",
+  "Staff only see projects assigned to them. Admins, bosses and general managers can see all projects. Managers see the projects they created or are assigned to. Staff assignments are managed inside the project Staff tab by the project creator or an admin.":
+    "员工只能查看分配给自己的项目。管理员、负责人和总经理可以查看所有项目。经理可以查看自己创建或被分配的项目。员工分配需在项目详情的“员工”标签中管理，且仅项目创建者或管理员可以操作。",
   "Add staff": "添加员工",
   "Only the project creator or an admin can change staff assignments.":
     "只有项目创建者或管理员可以更改员工分配。",

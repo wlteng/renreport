@@ -1,4 +1,4 @@
-export type AppRole = "admin" | "boss" | "manager" | "staff";
+export type AppRole = "admin" | "boss" | "general_manager" | "manager" | "staff";
 
 export type PermissionKey =
   | "manage_people"
@@ -6,6 +6,7 @@ export type PermissionKey =
   | "manage_departments"
   | "manage_permissions"
   | "manage_projects"
+  | "manage_own_projects"
   | "submit_work"
   | "view_staff_feed"
   | "submit_expenses"
@@ -14,11 +15,12 @@ export type PermissionKey =
   | "manage_compensation"
   | "view_audit_log";
 
-export const ROLE_ORDER: AppRole[] = ["admin", "boss", "manager", "staff"];
+export const ROLE_ORDER: AppRole[] = ["admin", "boss", "general_manager", "manager", "staff"];
 
 export const ROLE_LABEL: Record<AppRole, string> = {
   admin: "Admin",
   boss: "Boss",
+  general_manager: "General Manager",
   manager: "Manager",
   staff: "Staff",
 };
@@ -26,7 +28,8 @@ export const ROLE_LABEL: Record<AppRole, string> = {
 export const ROLE_DESCRIPTION: Record<AppRole, string> = {
   admin: "Full control of people, projects, permissions, expenses and compensation.",
   boss: "Oversees staff activity, projects and expense approvals.",
-  manager: "Monitors staff activity and project expenses.",
+  general_manager: "Monitors staff activity and project expenses.",
+  manager: "Creates and runs their own projects, including tasks, milestones and staff.",
   staff: "Submits project work logs and expenses.",
 };
 
@@ -41,6 +44,7 @@ const DEFAULT_PERMISSIONS: Record<AppRole, PermissionKey[]> = {
     "manage_departments",
     "manage_permissions",
     "manage_projects",
+    "manage_own_projects",
     "submit_work",
     "view_staff_feed",
     "submit_expenses",
@@ -49,8 +53,15 @@ const DEFAULT_PERMISSIONS: Record<AppRole, PermissionKey[]> = {
     "manage_compensation",
     "view_audit_log",
   ],
-  boss: ["manage_projects", "view_staff_feed", "view_expenses", "approve_expenses"],
-  manager: ["view_staff_feed", "view_expenses"],
+  boss: [
+    "manage_projects",
+    "manage_own_projects",
+    "view_staff_feed",
+    "view_expenses",
+    "approve_expenses",
+  ],
+  general_manager: ["view_staff_feed", "view_expenses"],
+  manager: ["manage_own_projects", "submit_work", "submit_expenses"],
   staff: ["submit_work", "view_staff_feed", "submit_expenses"],
 };
 

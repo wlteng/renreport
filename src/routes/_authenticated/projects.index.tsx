@@ -99,7 +99,10 @@ function ProjectsPage() {
   const recent = useVisibleReports({ from: isoDaysAgo(6) });
   const taskSummary = useProjectTaskSummary();
   const queryClient = useQueryClient();
-  const editable = hasCapability(permissions, "manage_projects", roles);
+  const canManageAll = hasCapability(permissions, "manage_projects", roles);
+  const canManageOwn = hasCapability(permissions, "manage_own_projects", roles);
+  // Creating is allowed for both; editing a given card depends on ownership below.
+  const editable = canManageAll || canManageOwn;
 
   const [open, setOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRow | undefined>();
@@ -273,6 +276,7 @@ function ProjectsPage() {
           const weekly = recentByProject.get(project.id) ?? { entries: 0, hours: 0 };
           const tasks = tasksByProject.get(project.id);
           const isPinned = pinnedProjectIdSet.has(project.id);
+          const canEditThis = canManageAll || (canManageOwn && project.owner_id === user?.id);
           const members = (projectMembers.data ?? [])
             .filter((member) => member.project_id === project.id)
             .map((member) => peopleById.get(member.user_id))
@@ -346,7 +350,7 @@ function ProjectsPage() {
                         {isPinned ? <PinOff /> : <Pin />}
                         {t(isPinned ? "Unpin project" : "Pin project")}
                       </DropdownMenuItem>
-                      {editable ? (
+                      {canEditThis ? (
                         <>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onSelect={() => setEditingProject(project)}>

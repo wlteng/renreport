@@ -393,7 +393,11 @@ function ProjectDetailPage() {
       : Number(project.fund_amount) - committedExpenses;
   const canManageProject =
     !!profile?.is_active &&
-    (roles.includes("admin") || hasCapability(permissions, "manage_projects", roles));
+    (roles.includes("admin") ||
+      hasCapability(permissions, "manage_projects", roles) ||
+      (!!user &&
+        project?.owner_id === user.id &&
+        hasCapability(permissions, "manage_own_projects", roles)));
   const canManageStaff =
     !!profile?.is_active && !!user && (project?.owner_id === user.id || roles.includes("admin"));
   const canDeleteProject = !!profile?.is_active && roles.includes("admin");

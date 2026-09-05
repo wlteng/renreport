@@ -196,7 +196,7 @@ INSERT INTO public.user_roles (user_id, role, granted_by)
 VALUES
   ('10000000-0000-4000-8000-000000000001', 'admin', '10000000-0000-4000-8000-000000000001'),
   ('10000000-0000-4000-8000-000000000002', 'boss', '10000000-0000-4000-8000-000000000001'),
-  ('10000000-0000-4000-8000-000000000003', 'manager', '10000000-0000-4000-8000-000000000001'),
+  ('10000000-0000-4000-8000-000000000003', 'general_manager', '10000000-0000-4000-8000-000000000001'),
   ('10000000-0000-4000-8000-000000000004', 'staff', '10000000-0000-4000-8000-000000000001')
 ON CONFLICT (user_id, role) DO UPDATE
 SET granted_by = EXCLUDED.granted_by;
@@ -211,7 +211,7 @@ WHERE user_id IN (
 AND (user_id, role) NOT IN (
   ('10000000-0000-4000-8000-000000000001'::uuid, 'admin'::public.app_role),
   ('10000000-0000-4000-8000-000000000002'::uuid, 'boss'::public.app_role),
-  ('10000000-0000-4000-8000-000000000003'::uuid, 'manager'::public.app_role),
+  ('10000000-0000-4000-8000-000000000003'::uuid, 'general_manager'::public.app_role),
   ('10000000-0000-4000-8000-000000000004'::uuid, 'staff'::public.app_role)
 );
 
@@ -227,7 +227,7 @@ SELECT
       'view_expenses',
       'approve_expenses'
     ))
-    OR (seeded_role.role = 'manager'::public.app_role AND permission.key IN (
+    OR (seeded_role.role = 'general_manager'::public.app_role AND permission.key IN (
       'view_staff_feed',
       'view_expenses'
     ))
