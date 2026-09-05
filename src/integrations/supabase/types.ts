@@ -216,6 +216,7 @@ export type Database = {
           phone: string | null
           resume: string | null
           updated_at: string
+          username: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -229,6 +230,7 @@ export type Database = {
           phone?: string | null
           resume?: string | null
           updated_at?: string
+          username?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -242,6 +244,7 @@ export type Database = {
           phone?: string | null
           resume?: string | null
           updated_at?: string
+          username?: string | null
         }
         Relationships: [
           {
@@ -517,7 +520,7 @@ export type Database = {
           project_code?: string | null
           repository_url?: string | null
           reserve_kg?: number | null
-          slug: string
+          slug?: string
           status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string
           url?: string | null
@@ -835,6 +838,10 @@ export type Database = {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
       }
+      login_email_for_username: {
+        Args: { p_username: string }
+        Returns: string
+      }
       my_department: { Args: never; Returns: string }
       people_directory: {
         Args: never
@@ -847,6 +854,7 @@ export type Database = {
           is_active: boolean
           job_title: string
           resume: string
+          username: string
         }[]
       }
       project_slug_base: { Args: { value: string }; Returns: string }
