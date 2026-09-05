@@ -1,6 +1,6 @@
 -- Run after supabase/seed.sql. The transaction rolls back all test writes.
 BEGIN;
-SELECT plan(1);
+SELECT plan(2);
 SET LOCAL ROLE authenticated;
 
 DO $$
@@ -27,7 +27,7 @@ BEGIN
     FROM (VALUES
       ('10000000-0000-4000-8000-000000000001'::uuid, 'admin@renreport.test', 'admin'::public.app_role),
       ('10000000-0000-4000-8000-000000000002'::uuid, 'boss@renreport.test', 'boss'::public.app_role),
-      ('10000000-0000-4000-8000-000000000003'::uuid, 'manager@renreport.test', 'manager'::public.app_role),
+      ('10000000-0000-4000-8000-000000000003'::uuid, 'manager@renreport.test', 'general_manager'::public.app_role),
       ('10000000-0000-4000-8000-000000000004'::uuid, 'staff@renreport.test', 'staff'::public.app_role)
     ) AS seeded(id, email, role)
     ORDER BY seeded.email
@@ -186,5 +186,138 @@ $$;
 
 RESET ROLE;
 SELECT pass('Capability matrix and owner-scoped project assignments match RLS for all personas');
+
+-- Project-status gating: reports may only land on projects still accepting
+-- work, which since 20260904150000 means 'active' OR 'maintenance'. Every
+-- other status must reject the write for every persona.
+-- The loop above left a persona's JWT claim set, and protect_project_owner
+-- refuses to assign an owner other than the acting user. Act as the admin,
+-- who is allowed to set an arbitrary owner.
+SELECT set_config('request.jwt.claim.sub',
+  '10000000-0000-4000-8000-000000000001', true);
+SELECT set_config('request.jwt.claims', jsonb_build_object(
+  'sub', '10000000-0000-4000-8000-000000000001',
+  'role', 'authenticated')::text, true);
+
+INSERT INTO public.projects (id, name, status, owner_id)
+VALUES
+  ('30000000-0000-4000-8000-000000000002', 'Zoloto Maintenance Mine',
+   'maintenance', '10000000-0000-4000-8000-000000000002'),
+  ('30000000-0000-4000-8000-000000000003', 'Zoloto Completed Mine',
+   'completed', '10000000-0000-4000-8000-000000000002');
+
+INSERT INTO public.project_members (project_id, user_id)
+SELECT extra.id, member.user_id
+FROM (
+  VALUES
+    ('30000000-0000-4000-8000-000000000002'::uuid),
+    ('30000000-0000-4000-8000-000000000003'::uuid)
+) AS extra(id)
+CROSS JOIN (
+  SELECT user_id
+  FROM public.project_members
+  WHERE project_id = '30000000-0000-4000-8000-000000000001'
+) AS member;
+
+SET LOCAL ROLE authenticated;
+
+DO $$
+DECLARE
+  persona RECORD;
+  expected_submit BOOLEAN;
+  insert_failed BOOLEAN;
+  inserted_report_id UUID;
+BEGIN
+  FOR persona IN
+    SELECT *
+    FROM (VALUES
+      ('10000000-0000-4000-8000-000000000001'::uuid, 'admin@renreport.test'),
+      ('10000000-0000-4000-8000-000000000002'::uuid, 'boss@renreport.test'),
+      ('10000000-0000-4000-8000-000000000003'::uuid, 'manager@renreport.test'),
+      ('10000000-0000-4000-8000-000000000004'::uuid, 'staff@renreport.test')
+    ) AS seeded(id, email)
+    ORDER BY seeded.email
+  LOOP
+    PERFORM set_config('request.jwt.claim.sub', persona.id::text, true);
+    PERFORM set_config(
+      'request.jwt.claims',
+      jsonb_build_object('sub', persona.id::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    expected_submit := public.has_permission(persona.id, 'submit_work');
+
+    -- A maintenance project must behave exactly like an active one.
+    inserted_report_id := NULL;
+    insert_failed := false;
+    BEGIN
+      INSERT INTO public.reports (
+        user_id, project_id, report_date, report_type,
+        title, content, hours_spent, work_status, shift
+      )
+      VALUES (
+        persona.id,
+        '30000000-0000-4000-8000-000000000002',
+        CURRENT_DATE,
+        'site_operations',
+        'RLS maintenance-status test',
+        'Temporary work log verifying maintenance projects still accept work.',
+        1,
+        'completed',
+        'day'
+      )
+      RETURNING id INTO inserted_report_id;
+    EXCEPTION WHEN OTHERS THEN
+      insert_failed := true;
+    END;
+
+    IF insert_failed = expected_submit THEN
+      RAISE EXCEPTION
+        '% report INSERT on a maintenance project does not match submit_work=%',
+        persona.email, expected_submit;
+    END IF;
+
+    IF inserted_report_id IS NOT NULL THEN
+      DELETE FROM public.reports WHERE id = inserted_report_id;
+    END IF;
+
+    -- A completed project must reject work from everyone, submit_work or not.
+    inserted_report_id := NULL;
+    insert_failed := false;
+    BEGIN
+      INSERT INTO public.reports (
+        user_id, project_id, report_date, report_type,
+        title, content, hours_spent, work_status, shift
+      )
+      VALUES (
+        persona.id,
+        '30000000-0000-4000-8000-000000000003',
+        CURRENT_DATE,
+        'site_operations',
+        'RLS completed-status test',
+        'Temporary work log verifying completed projects reject new work.',
+        1,
+        'completed',
+        'day'
+      )
+      RETURNING id INTO inserted_report_id;
+    EXCEPTION WHEN OTHERS THEN
+      insert_failed := true;
+    END;
+
+    IF NOT insert_failed THEN
+      DELETE FROM public.reports WHERE id = inserted_report_id;
+      RAISE EXCEPTION
+        '% report INSERT succeeded on a completed project', persona.email;
+    END IF;
+
+    RAISE NOTICE 'PASS % status-gating maintenance=% completed=rejected',
+      persona.email, expected_submit;
+  END LOOP;
+END;
+$$;
+
+RESET ROLE;
+SELECT pass('Reports honour project status gating: maintenance accepts work, completed rejects it');
 SELECT * FROM finish();
 ROLLBACK;
