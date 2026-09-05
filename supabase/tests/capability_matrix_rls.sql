@@ -103,7 +103,7 @@ BEGIN
     WHERE id = CASE persona.role
       WHEN 'admin'::public.app_role THEN '40000000-0000-4000-8000-000000000001'::uuid
       WHEN 'boss'::public.app_role THEN '40000000-0000-4000-8000-000000000002'::uuid
-      WHEN 'manager'::public.app_role THEN '40000000-0000-4000-8000-000000000003'::uuid
+      WHEN 'general_manager'::public.app_role THEN '40000000-0000-4000-8000-000000000003'::uuid
       ELSE '40000000-0000-4000-8000-000000000004'::uuid
     END;
     GET DIAGNOSTICS affected_rows = ROW_COUNT;

@@ -53,7 +53,7 @@ const optionalDate = z.preprocess(
     .optional(),
 );
 
-export const appRoleSchema = z.enum(["admin", "boss", "manager", "staff"]);
+export const appRoleSchema = z.enum(["admin", "boss", "general_manager", "manager", "staff"]);
 export const miningMethodSchema = z.enum([
   "alluvial",
   "open_pit",

@@ -101,7 +101,9 @@ function ProjectsPage() {
   const recent = useVisibleReports({ from: isoDaysAgo(6) });
   const taskSummary = useProjectTaskSummary();
   const queryClient = useQueryClient();
-  const editable = hasCapability(permissions, "manage_projects", roles);
+  const canManageAll = hasCapability(permissions, "manage_projects", roles);
+  const canManageOwn = hasCapability(permissions, "manage_own_projects", roles);
+  const editable = canManageAll || canManageOwn;
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -502,7 +504,8 @@ function ProjectsPage() {
                   <Badge className={PROJECT_STATUS_TONE[project.status] ?? ""}>
                     {t(PROJECT_STATUS_LABEL[project.status] ?? project.status)}
                   </Badge>
-                  {editable && project.status !== "archived" ? (
+                  {(canManageAll || (canManageOwn && project.owner_id === user?.id)) &&
+                  project.status !== "archived" ? (
                     <Button
                       type="button"
                       size="sm"
