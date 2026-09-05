@@ -1,7 +1,10 @@
-ALTER TABLE public.profiles
-ADD COLUMN resume TEXT,
-ADD CONSTRAINT profiles_resume_length
-CHECK (resume IS NULL OR char_length(resume) BETWEEN 1 AND 5000);
-
-COMMENT ON COLUMN public.profiles.resume IS
-  'Staff employment history, mining experience, qualifications, and other résumé details.';
+-- No-op: duplicate of 20260831133000_staff_resume.sql, which runs earlier and
+-- already adds profiles.resume, the profiles_resume_length constraint and the
+-- column comment.
+--
+-- Replaying both failed with:
+--   ERROR: constraint "profiles_resume_length" for relation "profiles"
+--   already exists (SQLSTATE 42710)
+--
+-- Version 20260831152053 is already recorded as applied in every environment,
+-- so the file is kept to preserve history with its body removed.
