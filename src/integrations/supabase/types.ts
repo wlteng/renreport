@@ -1,10 +1,30 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5";
+  graphql_public: {
+    Tables: {
+      [_ in never]: never;
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json;
+          operationName?: string;
+          query?: string;
+          variables?: Json;
+        };
+        Returns: Json;
+      };
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
   public: {
     Tables: {
@@ -210,6 +230,7 @@ export type Database = {
           phone: string | null;
           resume: string | null;
           updated_at: string;
+          username: string | null;
         };
         Insert: {
           avatar_url?: string | null;
@@ -223,6 +244,7 @@ export type Database = {
           phone?: string | null;
           resume?: string | null;
           updated_at?: string;
+          username?: string | null;
         };
         Update: {
           avatar_url?: string | null;
@@ -236,6 +258,7 @@ export type Database = {
           phone?: string | null;
           resume?: string | null;
           updated_at?: string;
+          username?: string | null;
         };
         Relationships: [
           {
@@ -793,6 +816,10 @@ export type Database = {
         Args: { _report_id: string; _user_id: string };
         Returns: boolean;
       };
+      can_manage_project: {
+        Args: { _project_id: string };
+        Returns: boolean;
+      };
       can_manage_project_progress: {
         Args: { _project_id: string };
         Returns: boolean;
@@ -801,7 +828,10 @@ export type Database = {
         Args: { _project_id: string; _user_id: string };
         Returns: boolean;
       };
-      can_view_reports_of: { Args: { _author: string }; Returns: boolean };
+      can_view_reports_of: {
+        Args: { _author: string };
+        Returns: boolean;
+      };
       has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["app_role"][];
@@ -824,22 +854,44 @@ export type Database = {
         Args: { _project_id: string; _user_id: string };
         Returns: boolean;
       };
-      my_department: { Args: never; Returns: string };
+      is_project_owner: {
+        Args: { _project_id: string; _user_id: string };
+        Returns: boolean;
+      };
+      login_email_for_username: {
+        Args: { p_username: string };
+        Returns: string;
+      };
+      my_department: {
+        Args: Record<PropertyKey, never>;
+        Returns: string;
+      };
       people_directory: {
-        Args: never;
+        Args: Record<PropertyKey, never>;
         Returns: {
-          avatar_url: string | null;
-          department_id: string | null;
-          email: string | null;
-          full_name: string | null;
+          avatar_url: string;
+          department_id: string;
+          email: string;
+          full_name: string;
           id: string;
           is_active: boolean;
-          job_title: string | null;
-          resume: string | null;
+          job_title: string;
+          resume: string;
+          username: string;
         }[];
       };
-      report_edit_window: { Args: never; Returns: string };
-      user_department: { Args: { _user_id: string }; Returns: string };
+      project_slug_base: {
+        Args: { value: string };
+        Returns: string;
+      };
+      report_edit_window: {
+        Args: Record<PropertyKey, never>;
+        Returns: unknown;
+      };
+      user_department: {
+        Args: { _user_id: string };
+        Returns: string;
+      };
     };
     Enums: {
       app_role: "admin" | "boss" | "general_manager" | "manager" | "staff";
@@ -981,6 +1033,9 @@ export type CompositeTypes<
     : never;
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "boss", "general_manager", "manager", "staff"],

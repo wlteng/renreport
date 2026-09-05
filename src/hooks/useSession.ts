@@ -32,6 +32,7 @@ export function useUser() {
 export type Profile = {
   id: string;
   email: string;
+  username: string | null;
   full_name: string | null;
   avatar_url: string | null;
   job_title: string | null;

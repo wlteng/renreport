@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLanguage } from "@/lib/i18n";
-import { loginIdentifierToEmail } from "@/lib/staffAuth";
+import { resolveLoginEmail } from "@/lib/staffAuth";
 
 type AuthMode = "signin" | "forgot" | "recovery";
 
@@ -77,7 +77,7 @@ function AuthPage() {
       }
 
       const { error } = await supabase.auth.signInWithPassword({
-        email: loginIdentifierToEmail(identifier),
+        email: await resolveLoginEmail(identifier),
         password,
       });
       if (error) throw error;

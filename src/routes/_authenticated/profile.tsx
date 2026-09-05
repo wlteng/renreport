@@ -130,6 +130,14 @@ function ProfilePage() {
     onError: (e) => toast.error(e instanceof Error ? e.message : t("Could not update photo")),
   });
 
+  // The username is stored on the profile now; fall back to the local part of a
+  // synthetic staff address for accounts created before that column existed.
+  const loginLabel = profile?.username
+    ? { kind: "username" as const, value: profile.username }
+    : profile?.email && isStaffLoginEmail(profile.email)
+      ? { kind: "username" as const, value: staffLoginLabel(profile.email) }
+      : { kind: "email" as const, value: profile?.email ?? "" };
+
   const deptName =
     (departments.data ?? []).find((d) => d.id === profile?.department_id)?.name ?? t("Unassigned");
 
@@ -208,10 +216,8 @@ function ProfilePage() {
             <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>
-              {t(profile?.email && isStaffLoginEmail(profile.email) ? "Username" : "Email")}
-            </Label>
-            <Input value={profile?.email ? staffLoginLabel(profile.email) : ""} readOnly disabled />
+            <Label>{t(loginLabel.kind === "username" ? "Username" : "Email")}</Label>
+            <Input value={loginLabel.value} readOnly disabled />
           </div>
           <div className="flex justify-end">
             <Button type="submit" disabled={save.isPending}>

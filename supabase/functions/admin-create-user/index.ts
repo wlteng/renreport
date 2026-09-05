@@ -120,6 +120,7 @@ Deno.serve(async (request) => {
   try {
     const profileUpdate: Record<string, string | boolean | null> = {
       email: authEmail,
+      username: input.username,
       full_name: input.full_name,
       job_title: input.job_title || null,
       department_id: input.department_id || null,
