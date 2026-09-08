@@ -384,22 +384,29 @@ function Review() {
       {byPerson.length > 0 ? (
         <section className="mb-8">
           <h2 className="mb-3 text-sm font-semibold">{t("By person")}</h2>
-          <div className="logbook-card divide-y divide-border">
+          {/* A horizontal slider: one person keeps a card's width instead of
+              stretching across the page. */}
+          <div className="-mr-4 flex snap-x snap-mandatory scroll-pl-4 gap-3 overflow-x-auto pb-2 pr-4 [scrollbar-width:none] sm:mr-0 sm:pr-0 [&::-webkit-scrollbar]:hidden">
             {byPerson.map(([id, s]) => {
               const person = personById(id);
               return (
-                <div key={id} className="flex items-center gap-3 px-4 py-2.5 text-sm sm:px-5">
-                  <Avatar className="size-7 border border-border">
+                <article
+                  key={id}
+                  className="logbook-card flex w-48 shrink-0 snap-start items-center gap-3 p-3 sm:w-56 sm:p-4"
+                >
+                  <Avatar className="size-10 border border-border">
                     <AvatarImage src={person?.avatar_url ?? undefined} alt="" />
-                    <AvatarFallback className="text-[10px] font-semibold">
+                    <AvatarFallback className="text-xs font-semibold">
                       {personInitials(person?.full_name, person?.email)}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="min-w-0 flex-1 truncate">{displayName(person, t)}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {s.entries} {t("entries")} · {formatDurationTotal(s.duration)}
-                  </span>
-                </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{displayName(person, t)}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {s.entries} {t("entries")} · {formatDurationTotal(s.duration)}
+                    </p>
+                  </div>
+                </article>
               );
             })}
           </div>
