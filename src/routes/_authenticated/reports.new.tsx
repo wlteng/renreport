@@ -1,21 +1,32 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FilePenLine, ImagePlus, X } from "lucide-react";
+import { FilePenLine, ImagePlus, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { PageHeader } from "@/components/AppShell";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/useSession";
-import { useProjectMembers, useReport, useWorkEnabledProjects } from "@/hooks/useData";
+import {
+  usePeople,
+  useProjectMembers,
+  useReport,
+  useWorkEnabledProjects,
+  type PersonRow,
+} from "@/hooks/useData";
 import { nowForTimeInput, todayForDateInput } from "@/lib/dates";
 import { useLanguage } from "@/lib/i18n";
 import { compressImage } from "@/lib/images";
+import { personDisplayName, personInitials } from "@/lib/people";
 import {
   removeReportImages,
   reportImageUrl,
@@ -28,6 +39,7 @@ import { isWithinEditWindow } from "@/lib/reportEdits";
 import { hasCapability, REPORT_TYPES, type ReportType } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { firstValidationError, workLogSchema } from "@/lib/validation";
+import { participantsLabel } from "@/lib/workLogs";
 
 type ActivityExtraField = "detail" | "output" | "blockers" | "links";
 
@@ -86,6 +98,9 @@ const IMAGE_EXTENSION: Record<string, string> = {
   "image/webp": "webp",
 };
 
+/** Mirrors the reports_participants_check constraint in the database. */
+const PARTICIPANT_LIMIT = 50;
+
 // ?edit=<id> edits a work log; ?correct=<id> submits a correction; ?projectId=<id> preselects a project.
 const submitWorkSearchSchema = z.object({
   edit: z.string().uuid().optional().catch(undefined),
@@ -111,6 +126,7 @@ function SubmitWork() {
   const { t } = useLanguage();
   const projects = useWorkEnabledProjects();
   const projectMembers = useProjectMembers();
+  const people = usePeople();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { edit: editId, correct: correctId, projectId: requestedProjectId } = Route.useSearch();
@@ -118,6 +134,8 @@ function SubmitWork() {
   const sourceId = editId ?? correctId;
   const source = useReport(sourceId);
   const allowed = !!profile?.is_active && hasCapability(permissions, "submit_work", roles);
+  // Only admins can submit one work log on behalf of several people.
+  const isAdmin = roles.includes("admin");
   const userId = user?.id;
   const availableProjects = useMemo(() => {
     const activeProjects = projects.data ?? [];
@@ -148,6 +166,10 @@ function SubmitWork() {
   const [images, setImages] = useState<PendingImage[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>([]);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  // Team log participants other than the submitter, plus whether the submitter is included.
+  const [participantIds, setParticipantIds] = useState<string[]>([]);
+  const [includeMe, setIncludeMe] = useState(true);
+  const [staffSearch, setStaffSearch] = useState("");
   const previewUrls = useRef(new Set<string>());
   const prefilled = useRef(false);
   const activityDetailPlaceholder = ACTIVITY_DETAIL_PLACEHOLDER[type];
@@ -171,6 +193,58 @@ function SubmitWork() {
     hours: { max: "24", step: "0.25" },
     mins: { max: "1440", step: "1" },
   }[durationUnit];
+
+  const projectMemberIds = useMemo(
+    () =>
+      new Set(
+        (projectMembers.data ?? [])
+          .filter((member) => member.project_id === selectedProjectId)
+          .map((member) => member.user_id),
+      ),
+    [projectMembers.data, selectedProjectId],
+  );
+  // Staff an admin can credit: active people other than themselves, assigned staff first.
+  const selectableStaff = useMemo(() => {
+    if (!isAdmin) return [];
+    const term = staffSearch.trim().toLocaleLowerCase();
+    return (people.data ?? [])
+      .filter(
+        (person) =>
+          person.id !== userId && (person.is_active || participantIds.includes(person.id)),
+      )
+      .filter(
+        (person) =>
+          !term ||
+          `${person.full_name ?? ""} ${person.email ?? ""} ${person.job_title ?? ""}`
+            .toLocaleLowerCase()
+            .includes(term),
+      )
+      .sort((a, b) => {
+        const assigned = Number(projectMemberIds.has(b.id)) - Number(projectMemberIds.has(a.id));
+        return assigned || (a.full_name ?? "").localeCompare(b.full_name ?? "");
+      });
+  }, [isAdmin, participantIds, people.data, projectMemberIds, staffSearch, userId]);
+  const selectedPeople = useMemo(
+    () =>
+      participantIds
+        .map((id) => (people.data ?? []).find((person) => person.id === id))
+        .filter((person): person is PersonRow => !!person),
+    [participantIds, people.data],
+  );
+  const assignedSelectable = useMemo(
+    () =>
+      (people.data ?? [])
+        .filter(
+          (person) => person.id !== userId && person.is_active && projectMemberIds.has(person.id),
+        )
+        .map((person) => person.id),
+    [people.data, projectMemberIds, userId],
+  );
+  // Everyone credited on the log being saved; null keeps it a personal log.
+  const groupParticipantIds =
+    isAdmin && userId && (participantIds.length > 0 || !includeMe)
+      ? [...(includeMe ? [userId] : []), ...participantIds]
+      : null;
 
   useEffect(() => {
     const urls = previewUrls.current;
@@ -197,6 +271,9 @@ function SubmitWork() {
     setBlockers(report.blockers ?? "");
     setLinks(report.links ?? "");
     setExistingImages(report.image_urls ?? []);
+    const listed = report.participant_ids ?? [];
+    setIncludeMe(listed.length === 0 || listed.includes(report.user_id));
+    setParticipantIds(listed.filter((id) => id !== report.user_id));
   }, [mode, source.data]);
 
   async function addImages(files: FileList | File[]) {
@@ -230,6 +307,26 @@ function SubmitWork() {
     });
   }
 
+  function toggleParticipant(id: string) {
+    const selected = participantIds.includes(id);
+    if (!selected && participantIds.length + (includeMe ? 1 : 0) >= PARTICIPANT_LIMIT) {
+      toast.error(t("You can credit up to 50 people on one work log"));
+      return;
+    }
+    setParticipantIds(
+      selected ? participantIds.filter((item) => item !== id) : [...participantIds, id],
+    );
+  }
+
+  function selectAssignedStaff() {
+    setParticipantIds((current) =>
+      [...new Set([...current, ...assignedSelectable])].slice(
+        0,
+        PARTICIPANT_LIMIT - (includeMe ? 1 : 0),
+      ),
+    );
+  }
+
   const save = useMutation({
     mutationFn: async () => {
       const parsed = workLogSchema.safeParse({
@@ -260,6 +357,9 @@ function SubmitWork() {
       const input = parsed.data;
       if (!availableProjects.some((project) => project.id === input.project_id)) {
         throw new Error(t("You must be assigned to this active project before submitting work."));
+      }
+      if (isAdmin && !includeMe && participantIds.length === 0) {
+        throw new Error(t("Select at least one participant when you exclude yourself."));
       }
       if (mode !== "new" && !source.data) throw new Error(t("Work log not found."));
       const reportId = mode === "edit" && editId ? editId : crypto.randomUUID();
@@ -294,6 +394,7 @@ function SubmitWork() {
           blockers: input.blockers ?? null,
           links: input.links ?? null,
           image_urls: allImages.length ? allImages : null,
+          participant_ids: groupParticipantIds,
         };
         if (mode === "edit") {
           const { error } = await supabase.from("reports").update(record).eq("id", reportId);
@@ -323,7 +424,9 @@ function SubmitWork() {
           ? t("Work log updated")
           : mode === "correct"
             ? t("Correction submitted")
-            : "Work log submitted",
+            : groupParticipantIds
+              ? t("Team work log submitted")
+              : t("Work log submitted"),
       );
       queryClient.invalidateQueries({ queryKey: ["my-reports"] });
       queryClient.invalidateQueries({ queryKey: ["visible-reports"] });
@@ -600,6 +703,116 @@ function SubmitWork() {
             <option value="mins">{t("Mins")}</option>
           </select>
         </div>
+        {isAdmin ? (
+          <section className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
+            <div>
+              <h2 className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
+                <Users className="size-4 text-primary" aria-hidden="true" />
+                {t("Participants")}
+                {groupParticipantIds ? (
+                  <Badge variant="outline">
+                    {t("Team work log")} · {participantsLabel(groupParticipantIds.length, t)}
+                  </Badge>
+                ) : null}
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t(
+                  "Select the staff who took part; each of them is credited with these hours. Leave the list empty for a personal log.",
+                )}
+              </p>
+            </div>
+            <label className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm">
+              <span className="font-medium">{t("Include myself")}</span>
+              <Switch checked={includeMe} onCheckedChange={setIncludeMe} />
+            </label>
+            {selectedPeople.length ? (
+              <ul className="flex flex-wrap gap-1.5">
+                {selectedPeople.map((person) => {
+                  const name = personDisplayName(person, t("Unknown user"));
+                  return (
+                    <li key={person.id}>
+                      <button
+                        type="button"
+                        onClick={() => toggleParticipant(person.id)}
+                        aria-label={`${t("Remove")} ${name}`}
+                        className="flex items-center gap-1.5 rounded-full border border-primary/25 bg-stat-teal py-0.5 pl-0.5 pr-2 text-xs font-medium text-primary"
+                      >
+                        <Avatar className="size-5">
+                          <AvatarImage src={person.avatar_url ?? undefined} alt="" />
+                          <AvatarFallback className="text-[9px] font-semibold">
+                            {personInitials(person.full_name, person.email)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{name}</span>
+                        <X className="size-3" aria-hidden="true" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            <div className="flex gap-2">
+              <Input
+                value={staffSearch}
+                onChange={(event) => setStaffSearch(event.target.value)}
+                placeholder={t("Search staff")}
+                aria-label={t("Search staff")}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="shrink-0"
+                disabled={assignedSelectable.length === 0}
+                onClick={selectAssignedStaff}
+              >
+                {t("Select assigned staff")}
+              </Button>
+            </div>
+            <div className="max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border bg-card">
+              {selectableStaff.map((person) => {
+                const checked = participantIds.includes(person.id);
+                const name = personDisplayName(person, t("Unknown user"));
+                return (
+                  <label
+                    key={person.id}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted/60",
+                      checked && "bg-stat-teal/50",
+                    )}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => toggleParticipant(person.id)}
+                      aria-label={name}
+                    />
+                    <Avatar className="size-7 border border-border">
+                      <AvatarImage src={person.avatar_url ?? undefined} alt="" />
+                      <AvatarFallback className="text-[10px] font-semibold">
+                        {personInitials(person.full_name, person.email)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="min-w-0 flex-1 truncate">
+                      {name}
+                      {person.job_title ? (
+                        <span className="text-muted-foreground"> · {person.job_title}</span>
+                      ) : null}
+                    </span>
+                    {projectMemberIds.has(person.id) ? (
+                      <Badge variant="outline" className="shrink-0">
+                        {t("Assigned")}
+                      </Badge>
+                    ) : null}
+                  </label>
+                );
+              })}
+              {selectableStaff.length === 0 ? (
+                <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+                  {people.isLoading ? t("Loading staff…") : t("No staff match your search.")}
+                </p>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
         <div
           className={cn(
             "rounded-lg border border-dashed border-border bg-muted/20 p-3 transition-colors",

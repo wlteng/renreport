@@ -578,6 +578,7 @@ export type Database = {
           links: string | null
           output_quantity: number | null
           output_unit: string | null
+          participant_ids: string[] | null
           project_id: string | null
           report_date: string
           report_time: string
@@ -600,6 +601,7 @@ export type Database = {
           links?: string | null
           output_quantity?: number | null
           output_unit?: string | null
+          participant_ids?: string[] | null
           project_id?: string | null
           report_date?: string
           report_time?: string
@@ -622,6 +624,7 @@ export type Database = {
           links?: string | null
           output_quantity?: number | null
           output_unit?: string | null
+          participant_ids?: string[] | null
           project_id?: string | null
           report_date?: string
           report_time?: string

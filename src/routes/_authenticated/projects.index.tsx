@@ -56,7 +56,7 @@ import {
   projectSlug,
 } from "@/lib/projects";
 import { cn } from "@/lib/utils";
-import { currentReports } from "@/lib/workLogs";
+import { creditedHours, currentReports } from "@/lib/workLogs";
 
 const MAX_AVATARS = 5;
 const PROJECT_PINS_STORAGE_KEY = "renreport.project-pins.v1";
@@ -159,7 +159,7 @@ function ProjectsPage() {
       if (!report.project_id) continue;
       const current = map.get(report.project_id) ?? { entries: 0, hours: 0 };
       current.entries += 1;
-      current.hours += Number(report.hours_spent);
+      current.hours += creditedHours(report);
       map.set(report.project_id, current);
     }
     return map;

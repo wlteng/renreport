@@ -1,6 +1,7 @@
-import { Minus, Plus, RotateCcw } from "lucide-react";
+import { Minus, Plus, RotateCcw, Users } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,10 +15,17 @@ import {
 } from "@/components/ui/dialog";
 import type { ReportRow } from "@/hooks/useData";
 import { useLanguage } from "@/lib/i18n";
+import { personDisplayName, personInitials } from "@/lib/people";
 import { reportImageUrl } from "@/lib/reportImages";
 import { REPORT_TYPE_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
 import { cn } from "@/lib/utils";
-import { reportStamp, STATUS_TONE } from "@/lib/workLogs";
+import {
+  isGroupReport,
+  participantsLabel,
+  reportStamp,
+  STATUS_TONE,
+  type WorkLogPerson,
+} from "@/lib/workLogs";
 
 const ZOOM_LEVELS = [1, 1.5, 2, 3];
 
@@ -185,6 +193,37 @@ export function WorkLogThumbnail({
   );
 }
 
+/** Overlapping avatars for a group work log, with a "+N" bubble past the first few. */
+export function ParticipantAvatars({
+  people,
+  max = 3,
+  className,
+}: {
+  people: WorkLogPerson[];
+  max?: number;
+  className?: string;
+}) {
+  const shown = people.slice(0, max);
+  const rest = people.length - shown.length;
+  return (
+    <div className={cn("flex shrink-0 -space-x-2.5", className)}>
+      {shown.map((person) => (
+        <Avatar key={person.id} className="size-9 border-2 border-card">
+          <AvatarImage src={person.avatar_url ?? undefined} alt="" />
+          <AvatarFallback className="text-xs font-semibold">
+            {personInitials(person.full_name, person.email)}
+          </AvatarFallback>
+        </Avatar>
+      ))}
+      {rest > 0 ? (
+        <span className="grid size-9 shrink-0 place-items-center rounded-full border-2 border-card bg-muted text-[10px] font-semibold text-muted-foreground">
+          +{rest}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function ReportBadges({ report }: { report: ReportRow }) {
   const { t } = useLanguage();
   return (
@@ -197,6 +236,12 @@ export function ReportBadges({ report }: { report: ReportRow }) {
         {report.activity_detail ? ` · ${report.activity_detail}` : ""}
       </Badge>
       <Badge variant="outline">{Number(report.hours_spent).toFixed(1)}h</Badge>
+      {isGroupReport(report) ? (
+        <Badge variant="outline" className="gap-1">
+          <Users className="size-3" aria-hidden="true" />
+          {participantsLabel((report.participant_ids ?? []).length, t)}
+        </Badge>
+      ) : null}
     </div>
   );
 }
@@ -245,6 +290,7 @@ export function WorkLogDialog({
   history,
   projectName,
   personName,
+  participants,
   notice,
   actions,
   showCloseAction = true,
@@ -255,6 +301,8 @@ export function WorkLogDialog({
   history: ReportRow[];
   projectName: string;
   personName?: string | undefined;
+  /** Everyone credited on a group work log; omitted for a personal log. */
+  participants?: WorkLogPerson[] | undefined;
   notice?: ReactNode;
   actions?: ReactNode;
   showCloseAction?: boolean;
@@ -290,6 +338,29 @@ export function WorkLogDialog({
               </DialogDescription>
             </DialogHeader>
             <ReportBadges report={report} />
+            {participants?.length ? (
+              <section className="space-y-2">
+                <h3 className="logbook-label">
+                  {t("Participants")} · {participants.length}
+                </h3>
+                <ul className="flex flex-wrap gap-1.5">
+                  {participants.map((person) => (
+                    <li
+                      key={person.id}
+                      className="flex items-center gap-1.5 rounded-full border border-border bg-muted/40 py-0.5 pl-0.5 pr-2.5 text-xs"
+                    >
+                      <Avatar className="size-5">
+                        <AvatarImage src={person.avatar_url ?? undefined} alt="" />
+                        <AvatarFallback className="text-[9px] font-semibold">
+                          {personInitials(person.full_name, person.email)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>{personDisplayName(person, t("Unknown user"))}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
             <ReportBody report={report} onOpenImage={onOpenImage} />
             {history.length ? (
               <section className="space-y-3 border-t border-border pt-4">

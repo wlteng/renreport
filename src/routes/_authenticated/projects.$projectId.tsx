@@ -28,7 +28,12 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/AppShell";
 import { ExpenseDialog } from "@/components/ExpenseDialog";
 import { ProjectEditorDialog, type ProjectEditorValue } from "@/components/ProjectEditorDialog";
-import { ImageLightbox, WorkLogDialog, WorkLogImages } from "@/components/WorkLog";
+import {
+  ImageLightbox,
+  ParticipantAvatars,
+  WorkLogDialog,
+  WorkLogImages,
+} from "@/components/WorkLog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -99,8 +104,12 @@ import {
 import { hasCapability, WORK_STATUS_LABEL } from "@/lib/roles";
 import { staffLoginLabel } from "@/lib/staffAuth";
 import {
+  creditedHours,
   currentReports,
   historyOf,
+  isGroupReport,
+  participantsLabel,
+  participantsOf,
   reportMeta,
   reportStamp,
   rowKeyHandler,
@@ -284,10 +293,8 @@ function ProjectDetailPage() {
   }, [memberships.data, projects.data, selectedTeamMember]);
   const totalHours = useMemo(
     () =>
-      currentReports(reports.data ?? []).reduce(
-        (sum, report) => sum + Number(report.hours_spent),
-        0,
-      ),
+      // A team log credits its hours to every participant.
+      currentReports(reports.data ?? []).reduce((sum, report) => sum + creditedHours(report), 0),
     [reports.data],
   );
   const selectedReport = useMemo(
@@ -765,6 +772,11 @@ function ProjectDetailPage() {
         personName={
           selectedReport
             ? peopleById.get(selectedReport.user_id)?.full_name || t("Unknown user")
+            : undefined
+        }
+        participants={
+          selectedReport && isGroupReport(selectedReport)
+            ? participantsOf(selectedReport, peopleById)
             : undefined
         }
         onClose={() => setSelectedReportId(null)}
@@ -1636,6 +1648,9 @@ function ProjectDetailPage() {
 
                 const report = item.report;
                 const author = peopleById.get(report.user_id);
+                const participants = isGroupReport(report)
+                  ? participantsOf(report, peopleById)
+                  : undefined;
                 const open = () => setSelectedReportId(report.id);
                 return (
                   <article key={`report-${item.id}`} className="relative py-4 first:pt-0 last:pb-0">
@@ -1646,12 +1661,16 @@ function ProjectDetailPage() {
                       onKeyDown={rowKeyHandler(open)}
                       className={`flex cursor-pointer items-start gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canDeleteActivity ? "pr-10" : ""}`}
                     >
-                      <Avatar className="mt-0.5 size-9 shrink-0 border border-border">
-                        <AvatarImage src={author?.avatar_url ?? undefined} alt="" />
-                        <AvatarFallback className="text-xs font-semibold">
-                          {personInitials(author?.full_name, author?.email)}
-                        </AvatarFallback>
-                      </Avatar>
+                      {participants ? (
+                        <ParticipantAvatars people={participants} className="mt-0.5" />
+                      ) : (
+                        <Avatar className="mt-0.5 size-9 shrink-0 border border-border">
+                          <AvatarImage src={author?.avatar_url ?? undefined} alt="" />
+                          <AvatarFallback className="text-xs font-semibold">
+                            {personInitials(author?.full_name, author?.email)}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
                           <span className="min-w-0 truncate text-sm font-medium text-foreground">
@@ -1669,7 +1688,10 @@ function ProjectDetailPage() {
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           <span className="font-medium text-foreground/80">
                             {author?.full_name || author?.email || t("Unknown user")}
-                          </span>{" "}
+                          </span>
+                          {participants
+                            ? ` · ${t("Team")} · ${participantsLabel(participants.length, t)}`
+                            : ""}{" "}
                           · {reportStamp(report)} · {reportMeta(report, project.name, t)}
                         </p>
                         <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">

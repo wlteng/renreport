@@ -59,6 +59,11 @@ function pageScope(
         roles: ROLE_ORDER,
         detail: "Can submit work only to assigned active projects.",
       },
+      {
+        roles: ["admin"],
+        detail:
+          "Admins can submit one work log for several people; each participant is credited with the hours.",
+      },
     ];
   }
   if (pathname === "/review") {

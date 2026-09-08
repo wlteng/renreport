@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import { z } from "zod";
 
 import { PageHeader } from "@/components/AppShell";
-import { ImageLightbox, WorkLogDialog, WorkLogThumbnail } from "@/components/WorkLog";
+import {
+  ImageLightbox,
+  ParticipantAvatars,
+  WorkLogDialog,
+  WorkLogThumbnail,
+} from "@/components/WorkLog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,12 +37,18 @@ import { useLanguage } from "@/lib/i18n";
 import { personInitials } from "@/lib/people";
 import { hasCapability, REPORT_TYPES, WORK_STATUS_LABEL } from "@/lib/roles";
 import {
+  creditedHours,
   currentReports,
   historyOf,
+  isGroupReport,
+  participantsLabel,
+  participantsOf,
   reportMeta,
+  reportParticipants,
   reportStamp,
   rowKeyHandler,
   STATUS_TONE,
+  type WorkLogPerson,
 } from "@/lib/workLogs";
 
 // Filters live in the URL so a filtered view can be bookmarked or shared.
@@ -85,6 +96,7 @@ function FeedRow({
   report,
   replaces,
   person,
+  participants,
   projectName,
   onOpen,
   onOpenImage,
@@ -92,6 +104,8 @@ function FeedRow({
   report: ReportRow;
   replaces: ReportRow | undefined;
   person: PersonRow | undefined;
+  /** Everyone credited on a team log; undefined for a personal log. */
+  participants: WorkLogPerson[] | undefined;
   projectName: string;
   onOpen: () => void;
   onOpenImage: (src: string) => void;
@@ -105,12 +119,16 @@ function FeedRow({
       onKeyDown={rowKeyHandler(onOpen)}
       className="flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none sm:px-5 sm:py-4"
     >
-      <Avatar className="mt-0.5 size-9 shrink-0 border border-border">
-        <AvatarImage src={person?.avatar_url ?? undefined} alt="" />
-        <AvatarFallback className="text-xs font-semibold">
-          {personInitials(person?.full_name, person?.email)}
-        </AvatarFallback>
-      </Avatar>
+      {participants ? (
+        <ParticipantAvatars people={participants} className="mt-0.5" />
+      ) : (
+        <Avatar className="mt-0.5 size-9 shrink-0 border border-border">
+          <AvatarImage src={person?.avatar_url ?? undefined} alt="" />
+          <AvatarFallback className="text-xs font-semibold">
+            {personInitials(person?.full_name, person?.email)}
+          </AvatarFallback>
+        </Avatar>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
@@ -126,8 +144,10 @@ function FeedRow({
           </span>
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          <span className="font-medium text-foreground/80">{displayName(person, t)}</span> ·{" "}
-          {reportStamp(report)} · {reportMeta(report, projectName, t)}
+          <span className="font-medium text-foreground/80">{displayName(person, t)}</span>
+          {participants
+            ? ` · ${t("Team")} · ${participantsLabel(participants.length, t)}`
+            : ""} · {reportStamp(report)} · {reportMeta(report, projectName, t)}
         </p>
         {replaces ? (
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -172,22 +192,31 @@ function Review() {
   const selected = selectedId ? (byId.get(selectedId) ?? null) : null;
   const history = useMemo(() => (selected ? historyOf(selected, all) : []), [selected, all]);
 
-  const personById = (id: string) => (people.data ?? []).find((person) => person.id === id);
+  const peopleById = useMemo(
+    () => new Map((people.data ?? []).map((person) => [person.id, person])),
+    [people.data],
+  );
+  const personById = (id: string) => peopleById.get(id);
   const projectName = (id: string | null) =>
     id ? ((projects.data ?? []).find((p) => p.id === id)?.name ?? "—") : "—";
+  const participantsFor = (report: ReportRow) =>
+    isGroupReport(report) ? participantsOf(report, peopleById) : undefined;
 
+  // A team log counts once for every person credited on it.
   const byPerson = useMemo(() => {
     const map = new Map<string, { entries: number; hours: number }>();
     for (const r of current) {
-      const cur = map.get(r.user_id) ?? { entries: 0, hours: 0 };
-      cur.entries += 1;
-      cur.hours += Number(r.hours_spent);
-      map.set(r.user_id, cur);
+      for (const id of reportParticipants(r)) {
+        const cur = map.get(id) ?? { entries: 0, hours: 0 };
+        cur.entries += 1;
+        cur.hours += Number(r.hours_spent);
+        map.set(id, cur);
+      }
     }
     return [...map.entries()].sort((a, b) => b[1].hours - a[1].hours);
   }, [current]);
 
-  const totalHours = current.reduce((s, r) => s + Number(r.hours_spent), 0);
+  const totalHours = current.reduce((s, r) => s + creditedHours(r), 0);
 
   if (loading) {
     return <p className="text-sm text-muted-foreground">{t("Checking staff activity access…")}</p>;
@@ -377,6 +406,7 @@ function Review() {
                 report.supersedes_report_id ? byId.get(report.supersedes_report_id) : undefined
               }
               person={personById(report.user_id)}
+              participants={participantsFor(report)}
               projectName={projectName(report.project_id)}
               onOpen={() => setSelectedId(report.id)}
               onOpenImage={setLightbox}
@@ -395,6 +425,7 @@ function Review() {
         history={history}
         projectName={projectName(selected?.project_id ?? null)}
         personName={selected ? displayName(personById(selected.user_id), t) : undefined}
+        participants={selected ? participantsFor(selected) : undefined}
         showCloseAction={false}
         onClose={() => setSelectedId(null)}
         onOpenImage={setLightbox}

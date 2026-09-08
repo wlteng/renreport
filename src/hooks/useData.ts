@@ -295,10 +295,11 @@ export function useMyReports(userId: string | undefined) {
     queryKey: ["my-reports", userId],
     enabled: !!userId,
     queryFn: async () => {
+      // Logs this person wrote, plus group logs that credit them.
       const { data, error } = await supabase
         .from("reports")
         .select("*")
-        .eq("user_id", userId!)
+        .or(`user_id.eq.${userId},participant_ids.cs.{${userId}}`)
         .order("report_date", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -339,7 +340,10 @@ export function useVisibleReports(filters: ReportFilters, enabled = true) {
       let query = supabase.from("reports").select("*");
       if (filters.from) query = query.gte("report_date", filters.from);
       if (filters.to) query = query.lte("report_date", filters.to);
-      if (filters.userId) query = query.eq("user_id", filters.userId);
+      if (filters.userId) {
+        // A person's feed includes group logs that credit them.
+        query = query.or(`user_id.eq.${filters.userId},participant_ids.cs.{${filters.userId}}`);
+      }
       if (filters.projectId) query = query.eq("project_id", filters.projectId);
       if (filters.type) query = query.eq("report_type", filters.type as ReportType);
       const { data, error } = await query

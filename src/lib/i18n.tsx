@@ -753,6 +753,27 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   manage_compensation: "管理薪酬",
   view_audit_log: "查看审计日志",
   Blocker: "阻碍事项",
+  Participants: "参与人员",
+  "Include myself": "包含我自己",
+  people: "人",
+  "Team work log": "团队工作日志",
+  "Team work log submitted": "团队工作日志已提交",
+  "Work log submitted": "工作日志已提交",
+  "Select the staff who took part; each of them is credited with these hours. Leave the list empty for a personal log.":
+    "选择参与的员工，每人都会记入这些工时。留空则为个人日志。",
+  "Search staff": "搜索员工",
+  "Select assigned staff": "选择已分配员工",
+  Assigned: "已分配",
+  "Loading staff…": "正在加载员工…",
+  "No staff match your search.": "没有匹配的员工。",
+  "Select at least one participant when you exclude yourself.":
+    "如果不包含自己，请至少选择一位参与人员。",
+  "You can credit up to 50 people on one work log": "一条工作日志最多可记入 50 人",
+  "Submitted for the team by {name}.": "由 {name} 代表团队提交。",
+  "Only the author can edit or delete this team work log.":
+    "只有提交人可以编辑或删除此团队工作日志。",
+  "Admins can submit one work log for several people; each participant is credited with the hours.":
+    "管理员可以为多人提交一条工作日志，每位参与人员都会记入工时。",
 };
 
 type LanguageContextValue = {

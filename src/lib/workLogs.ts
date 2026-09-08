@@ -10,6 +10,51 @@ export const STATUS_TONE: Record<string, string> = {
   blocked: "border-transparent bg-stat-copper text-accent-foreground",
 };
 
+/** The directory fields needed to show a person on a work log. */
+export type WorkLogPerson = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+};
+
+type CreditedReport = Pick<ReportRow, "user_id" | "participant_ids">;
+
+/** A group log lists several people; a personal log credits its author alone. */
+export function isGroupReport(report: Pick<ReportRow, "participant_ids">) {
+  return (report.participant_ids?.length ?? 0) > 0;
+}
+
+/** Everyone credited with the hours of a work log. */
+export function reportParticipants(report: CreditedReport): string[] {
+  return report.participant_ids?.length ? report.participant_ids : [report.user_id];
+}
+
+/** Whether the hours of a work log count toward this person's own record. */
+export function reportCreditsUser(report: CreditedReport, userId: string | undefined) {
+  return !!userId && reportParticipants(report).includes(userId);
+}
+
+/** Hours a work log adds to a team total: every participant is credited in full. */
+export function creditedHours(report: CreditedReport & Pick<ReportRow, "hours_spent">) {
+  return Number(report.hours_spent) * reportParticipants(report).length;
+}
+
+/** Directory entries for everyone credited on a work log; unknown ids still count. */
+export function participantsOf<P extends WorkLogPerson>(
+  report: CreditedReport,
+  peopleById: ReadonlyMap<string, P>,
+): WorkLogPerson[] {
+  return reportParticipants(report).map(
+    (id) => peopleById.get(id) ?? { id, full_name: null, email: null, avatar_url: null },
+  );
+}
+
+/** "3 people" / "3 人" for a group work log. */
+export function participantsLabel(count: number, t: (text: string) => string) {
+  return `${count} ${t("people")}`;
+}
+
 /** Drops work logs that a later correction has replaced, keeping only the latest version. */
 export function currentReports<T extends Pick<ReportRow, "id" | "supersedes_report_id">>(
   reports: T[],

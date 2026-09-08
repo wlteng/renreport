@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { PenLine, Pencil, Trash2 } from "lucide-react";
+import { PenLine, Pencil, Trash2, Users } from "lucide-react";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -15,16 +15,29 @@ import {
   useProjectMembers,
   useProjects,
   useVisibleReports,
+  type PersonRow,
   type ReportRow,
 } from "@/hooks/useData";
 import { useMe } from "@/hooks/useSession";
 import { todayForDateInput } from "@/lib/dates";
 import { deleteRecord } from "@/lib/deleteRecord";
 import { useLanguage, type AppLanguage } from "@/lib/i18n";
+import { personDisplayName } from "@/lib/people";
 import { isProjectWorkEnabled } from "@/lib/projects";
 import { isWithinEditWindow } from "@/lib/reportEdits";
 import { hasCapability, WORK_STATUS_LABEL } from "@/lib/roles";
-import { currentReports, historyOf, reportMeta, rowKeyHandler, STATUS_TONE } from "@/lib/workLogs";
+import {
+  creditedHours,
+  currentReports,
+  historyOf,
+  isGroupReport,
+  participantsOf,
+  reportCreditsUser,
+  reportMeta,
+  reportParticipants,
+  rowKeyHandler,
+  STATUS_TONE,
+} from "@/lib/workLogs";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -133,6 +146,12 @@ function WorkLogRow({
             <Badge className={STATUS_TONE[report.work_status]}>
               {t(WORK_STATUS_LABEL[report.work_status] ?? report.work_status)}
             </Badge>
+            {isGroupReport(report) ? (
+              <Badge variant="outline" className="gap-1" title={t("Team work log")}>
+                <Users className="size-3" aria-hidden="true" />
+                {(report.participant_ids ?? []).length}
+              </Badge>
+            ) : null}
             {report.supersedes_report_id ? (
               <Badge variant="outline">{t("Correction")}</Badge>
             ) : null}
@@ -229,10 +248,14 @@ function CorrectionLink({ reportId, disabled }: { reportId: string; disabled: bo
 
 function MyWorkSection({
   reports,
+  userId,
+  peopleById,
   canSubmitWork,
   assignedActiveProjectIds,
 }: {
   reports: ReturnType<typeof useMyReports>;
+  userId: string | undefined;
+  peopleById: ReadonlyMap<string, PersonRow>;
   canSubmitWork: boolean;
   assignedActiveProjectIds: ReadonlySet<string>;
 }) {
@@ -257,14 +280,24 @@ function MyWorkSection({
     return [...grouped.entries()].map(([date, items]) => ({
       date,
       items,
+      // A team log the author left themselves out of is listed but not counted.
       hours: current
-        .filter((report) => report.report_date === date)
+        .filter((report) => report.report_date === date && reportCreditsUser(report, userId))
         .reduce((sum, report) => sum + Number(report.hours_spent), 0),
     }));
-  }, [current, visibleCount]);
+  }, [current, userId, visibleCount]);
   const selected = selectedId ? (all.find((report) => report.id === selectedId) ?? null) : null;
   const history = useMemo(() => (selected ? historyOf(selected, all) : []), [selected, all]);
   const editable = selected ? isWithinEditWindow(selected.created_at) : false;
+  const isAuthor = !!selected && selected.user_id === userId;
+  const participants =
+    selected && isGroupReport(selected) ? participantsOf(selected, peopleById) : undefined;
+  const authorName = selected
+    ? personDisplayName(
+        peopleById.get(selected.user_id) ?? { full_name: null, email: null },
+        t("Unknown user"),
+      )
+    : "";
   const projectName = (id: string | null) =>
     id ? (projects.data?.find((project) => project.id === id)?.name ?? "—") : "—";
 
@@ -368,10 +401,17 @@ function MyWorkSection({
         report={selected}
         history={history}
         projectName={projectName(selected?.project_id ?? null)}
+        personName={isAuthor ? undefined : authorName}
+        participants={participants}
         onClose={() => setSelectedId(null)}
         onOpenImage={setLightbox}
         notice={
-          canSubmitWork ? (
+          selected && !isAuthor ? (
+            <p className="text-xs text-muted-foreground">
+              {t("Submitted for the team by {name}.").replace("{name}", authorName)}{" "}
+              {t("Only the author can edit or delete this team work log.")}
+            </p>
+          ) : canSubmitWork ? (
             <p className="text-xs text-muted-foreground">
               {editable
                 ? t("Editable for 1 hour after submission.")
@@ -382,7 +422,7 @@ function MyWorkSection({
           ) : null
         }
         actions={
-          canSubmitWork && selected ? (
+          canSubmitWork && selected && isAuthor ? (
             <div className="flex flex-wrap gap-2">
               {editable ? (
                 <>
@@ -429,6 +469,10 @@ function Dashboard() {
   const projectMembers = useProjectMembers();
   const week = useVisibleReports({ from: isoDaysAgo(6) });
   const canSubmitWork = hasCapability(permissions, "submit_work", roles);
+  const peopleById = useMemo(
+    () => new Map((people.data ?? []).map((person) => [person.id, person])),
+    [people.data],
+  );
   const assignedActiveProjectIds = useMemo(() => {
     const activeProjectIds = new Set(
       (projects.data ?? [])
@@ -442,20 +486,25 @@ function Dashboard() {
     );
   }, [projectMembers.data, projects.data, user?.id]);
 
+  // Only logs that credit this person count toward their own numbers.
   const myWeek = useMemo(
-    () => currentReports(mine.data ?? []).filter((report) => report.report_date >= isoDaysAgo(6)),
-    [mine.data],
+    () =>
+      currentReports(mine.data ?? []).filter(
+        (report) => report.report_date >= isoDaysAgo(6) && reportCreditsUser(report, user?.id),
+      ),
+    [mine.data, user?.id],
   );
   const teamWeek = useMemo(() => currentReports(week.data ?? []), [week.data]);
   const myHours = myWeek.reduce((sum, report) => sum + Number(report.hours_spent), 0);
-  const teamHours = teamWeek.reduce((sum, report) => sum + Number(report.hours_spent), 0);
+  // A team log credits its hours to every participant.
+  const teamHours = teamWeek.reduce((sum, report) => sum + creditedHours(report), 0);
   const activeProjects = (projects.data ?? []).filter(
     (project) => project.status === "active",
   ).length;
   const reportedToday = new Set(
     teamWeek
       .filter((report) => report.report_date === todayForDateInput())
-      .map((report) => report.user_id),
+      .flatMap((report) => reportParticipants(report)),
   );
   const missingToday = (people.data ?? []).filter(
     (person) => person.is_active && !reportedToday.has(person.id),
@@ -479,6 +528,8 @@ function Dashboard() {
         </StatRow>
         <MyWorkSection
           reports={mine}
+          userId={user?.id}
+          peopleById={peopleById}
           canSubmitWork={canSubmitWork}
           assignedActiveProjectIds={assignedActiveProjectIds}
         />
