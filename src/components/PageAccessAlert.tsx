@@ -48,6 +48,14 @@ function pageScope(
         detail: "Can create and edit every project.",
       },
       {
+        roles: ROLE_ORDER.filter(
+          (role) =>
+            rolesWithCapability(rolePermissions, "manage_projects").includes(role) ||
+            rolesWithCapability(rolePermissions, "manage_own_projects").includes(role),
+        ),
+        detail: "Whoever creates a project, and its owner, are assigned to it automatically.",
+      },
+      {
         roles: ["admin"],
         detail: "Can transfer project ownership and manage every staff assignment.",
       },

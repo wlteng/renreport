@@ -753,6 +753,8 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   manage_compensation: "管理薪酬",
   view_audit_log: "查看审计日志",
   Blocker: "阻碍事项",
+  "Whoever creates a project, and its owner, are assigned to it automatically.":
+    "项目的创建者和负责人会自动被分配到该项目。",
   Participants: "参与人员",
   "Include myself": "包含我自己",
   people: "人",

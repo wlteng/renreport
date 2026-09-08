@@ -188,6 +188,8 @@ function ProjectsPage() {
       toast.success(t("Project created"));
       setOpen(false);
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      // The database assigns the creator to the new project.
+      queryClient.invalidateQueries({ queryKey: ["project-members"] });
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Could not create project")),
@@ -216,6 +218,8 @@ function ProjectsPage() {
       toast.success(t("Project updated"));
       setEditingProject(undefined);
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      // A new owner is assigned to the project by the database.
+      queryClient.invalidateQueries({ queryKey: ["project-members"] });
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Could not update project")),

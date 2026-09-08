@@ -118,11 +118,13 @@ export function AdminProjects() {
       if (error) throw error;
       const uniqueMemberIds = [...new Set(memberIds)];
       if (uniqueMemberIds.length > 0) {
-        const { error: memberError } = await supabase.from("project_members").insert(
+        // The creator and owner are already assigned by the database, so duplicates are skipped.
+        const { error: memberError } = await supabase.from("project_members").upsert(
           uniqueMemberIds.map((userId) => ({
             project_id: data.id,
             user_id: userId,
           })),
+          { onConflict: "project_id,user_id", ignoreDuplicates: true },
         );
         if (memberError) {
           await supabase.from("projects").delete().eq("id", data.id);
@@ -325,11 +327,13 @@ async function syncProjectMembers(
     .map((membership) => membership.id);
 
   if (memberIdsToAdd.length > 0) {
-    const { error } = await supabase.from("project_members").insert(
+    // A transferred owner may already be assigned by the database; skip duplicates.
+    const { error } = await supabase.from("project_members").upsert(
       memberIdsToAdd.map((userId) => ({
         project_id: projectId,
         user_id: userId,
       })),
+      { onConflict: "project_id,user_id", ignoreDuplicates: true },
     );
     if (error) throw error;
   }

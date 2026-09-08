@@ -616,6 +616,8 @@ function ProjectDetailPage() {
       toast.success(t("Project updated"));
       setSettingsOpen(false);
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      // A new owner is assigned to the project by the database.
+      queryClient.invalidateQueries({ queryKey: ["project-members"] });
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Could not update project")),

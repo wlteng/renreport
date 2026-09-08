@@ -276,7 +276,8 @@ export function ProjectEditorDialog({
                 : project
                   ? "Update the project details, category and starting fund."
                   : "Add the project details, category and starting fund.",
-            )}
+            )}{" "}
+            {t("Whoever creates a project, and its owner, are assigned to it automatically.")}
           </DialogDescription>
         </DialogHeader>
         <form
