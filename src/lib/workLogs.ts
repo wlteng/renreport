@@ -10,6 +10,22 @@ export const STATUS_TONE: Record<string, string> = {
   blocked: "border-transparent bg-stat-copper text-accent-foreground",
 };
 
+/** Hours in a day, used to read a multi-day work log back as days. */
+export const HOURS_PER_DAY = 24;
+
+/**
+ * Duration of a work log for display. Site visits can run for several days, so
+ * anything from a full day up is shown in days with the hours kept alongside.
+ */
+export function formatWorkDuration(hoursSpent: number | string) {
+  const hours = Number(hoursSpent);
+  if (!Number.isFinite(hours)) return "0h";
+  if (hours < HOURS_PER_DAY) return `${hours.toFixed(1)}h`;
+  const days = hours / HOURS_PER_DAY;
+  const dayLabel = Number.isInteger(days) ? String(days) : days.toFixed(1);
+  return `${dayLabel}d · ${hours.toFixed(1)}h`;
+}
+
 /** The directory fields needed to show a person on a work log. */
 export type WorkLogPerson = {
   id: string;

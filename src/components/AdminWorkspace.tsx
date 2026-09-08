@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  Building2,
   ChevronLeft,
   ChevronRight,
   FolderKanban,
@@ -17,12 +16,11 @@ import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-export type AdminSection = "people" | "projects" | "departments" | "permissions";
+export type AdminSection = "people" | "projects" | "permissions";
 
 const ADMIN_NAVIGATION = [
   { id: "people", label: "People & roles", icon: Users },
   { id: "projects", label: "Projects", icon: FolderKanban },
-  { id: "departments", label: "Departments", icon: Building2 },
   { id: "permissions", label: "Capabilities", icon: ShieldCheck },
 ] as const;
 

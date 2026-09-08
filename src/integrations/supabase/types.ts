@@ -205,6 +205,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          admin_notes: string | null
           avatar_url: string | null
           created_at: string
           department_id: string | null
@@ -219,6 +220,7 @@ export type Database = {
           username: string | null
         }
         Insert: {
+          admin_notes?: string | null
           avatar_url?: string | null
           created_at?: string
           department_id?: string | null
@@ -233,6 +235,7 @@ export type Database = {
           username?: string | null
         }
         Update: {
+          admin_notes?: string | null
           avatar_url?: string | null
           created_at?: string
           department_id?: string | null
@@ -852,6 +855,7 @@ export type Database = {
       people_directory: {
         Args: never
         Returns: {
+          admin_notes: string
           avatar_url: string
           department_id: string
           email: string

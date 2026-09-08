@@ -51,7 +51,7 @@ import {
   videoPosterCandidates,
   videoPosterPath,
 } from "@/lib/videos";
-import { participantsLabel } from "@/lib/workLogs";
+import { HOURS_PER_DAY, participantsLabel } from "@/lib/workLogs";
 import {
   clearWorkLogDraft,
   loadWorkLogDraft,
@@ -224,9 +224,10 @@ function SubmitWork() {
     projectId ||
     (requestedProjectIsAvailable ? requestedProjectId : undefined) ||
     (availableProjects.length === 1 ? availableProjects[0]!.id : "");
+  // A site visit can run for several days, so a log may record up to 31 days.
   const durationInput = {
-    days: { max: "1", step: "0.25" },
-    hours: { max: "24", step: "0.25" },
+    days: { max: "31", step: "0.5" },
+    hours: { max: "744", step: "0.25" },
     mins: { max: "1440", step: "1" },
   }[durationUnit];
 
@@ -300,8 +301,11 @@ function SubmitWork() {
     setWorkStatus(report.work_status);
     setTitle(report.title);
     setContent(report.content);
-    setHours(String(Number(report.hours_spent)));
-    setDurationUnit("hours");
+    // Multi-day work reads back in days, the unit it was most likely entered in.
+    const recordedHours = Number(report.hours_spent);
+    const wholeDays = recordedHours >= HOURS_PER_DAY && recordedHours % HOURS_PER_DAY === 0;
+    setHours(String(wholeDays ? recordedHours / HOURS_PER_DAY : recordedHours));
+    setDurationUnit(wholeDays ? "days" : "hours");
     setOutputQuantity(report.output_quantity === null ? "" : String(report.output_quantity));
     setOutputUnit(report.output_unit ?? "");
     setBlockers(report.blockers ?? "");
@@ -525,7 +529,7 @@ function SubmitWork() {
           hours === ""
             ? ""
             : durationUnit === "days"
-              ? Number(hours) * 24
+              ? Number(hours) * HOURS_PER_DAY
               : durationUnit === "mins"
                 ? Number(hours) / 60
                 : hours,
@@ -946,7 +950,7 @@ function SubmitWork() {
           />
         </Field>
         <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-3 sm:max-w-md">
-          <Field label="Hours" id="hours">
+          <Field label="Duration" id="hours">
             <Input
               id="hours"
               type="number"
@@ -956,6 +960,7 @@ function SubmitWork() {
               value={hours}
               onChange={(event) => setHours(event.target.value)}
               placeholder={t("Duration")}
+              aria-describedby="duration-help"
             />
           </Field>
           <select
@@ -969,6 +974,11 @@ function SubmitWork() {
             <option value="hours">{t("Hours")}</option>
             <option value="mins">{t("Mins")}</option>
           </select>
+          <p id="duration-help" className="col-span-2 text-xs text-muted-foreground">
+            {durationUnit === "days"
+              ? t("Enter how many days this work took, up to 31.")
+              : t("Switch to days for work that ran over several days.")}
+          </p>
         </div>
         {isAdmin ? (
           <section className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">

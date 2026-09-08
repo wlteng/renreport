@@ -50,13 +50,11 @@ function ProfilePage() {
   const navigate = useNavigate();
 
   const [fullName, setFullName] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
   const [phone, setPhone] = useState("");
 
   useEffect(() => {
     if (!profile) return;
     setFullName(profile.full_name ?? "");
-    setJobTitle(profile.job_title ?? "");
     setPhone(profile.phone ?? "");
   }, [profile]);
 
@@ -64,7 +62,7 @@ function ProfilePage() {
     mutationFn: async () => {
       const { error } = await supabase
         .from("profiles")
-        .update({ full_name: fullName, job_title: jobTitle, phone })
+        .update({ full_name: fullName, phone })
         .eq("id", user!.id);
       if (error) throw error;
     },
@@ -208,10 +206,6 @@ function ProfilePage() {
             <Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="job">{t("Job title")}</Label>
-            <Input id="job" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
             <Label htmlFor="phone">{t("Phone")}</Label>
             <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
@@ -243,8 +237,12 @@ function ProfilePage() {
               <p className="logbook-label">{t("Department")}</p>
               <p className="mt-1 text-sm">{deptName}</p>
             </div>
+            <div className="border-t border-border pt-3">
+              <p className="logbook-label">{t("Job title")}</p>
+              <p className="mt-1 text-sm">{profile?.job_title || t("Unassigned")}</p>
+            </div>
             <p className="text-xs text-muted-foreground">
-              {t("Roles and departments are set by an admin.")}
+              {t("Job titles, roles and departments are set by an admin.")}
             </p>
           </div>
         </div>

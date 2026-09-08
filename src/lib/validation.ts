@@ -154,7 +154,7 @@ export const workLogSchema = z
     shift: shiftSchema,
     title: trimmed(1, 160, "Task or headline"),
     content: trimmed(1, 10000, "Details"),
-    hours_spent: z.coerce.number().min(0).max(24),
+    hours_spent: z.coerce.number().min(0).max(744),
     output_quantity: optionalNumber(99999999999.999),
     output_unit: optionalTrimmed(24),
     blockers: optionalTrimmed(2000),
@@ -196,6 +196,7 @@ export const personDetailsSchema = z.object({
   full_name: trimmed(1, 120, "Full name"),
   job_title: optionalTrimmed(120),
   resume: optionalTrimmed(5000),
+  admin_notes: optionalTrimmed(5000),
 });
 
 export const roleMutationSchema = z.object({

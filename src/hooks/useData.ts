@@ -20,7 +20,14 @@ export type ProjectGitEventRow = Tables<"project_git_events">;
 
 type DirectoryProfile = Pick<
   Tables<"profiles">,
-  "id" | "full_name" | "avatar_url" | "job_title" | "resume" | "department_id" | "is_active"
+  | "id"
+  | "full_name"
+  | "avatar_url"
+  | "job_title"
+  | "resume"
+  | "admin_notes"
+  | "department_id"
+  | "is_active"
 >;
 export type PersonRow = DirectoryProfile & { email: string | null };
 export type StaffDirectoryRow = Pick<
@@ -29,7 +36,7 @@ export type StaffDirectoryRow = Pick<
 >;
 
 const PUBLIC_DIRECTORY_FIELDS =
-  "id, full_name, avatar_url, job_title, resume, department_id, is_active" as const;
+  "id, full_name, avatar_url, job_title, resume, admin_notes, department_id, is_active" as const;
 
 async function loadPeopleDirectory(): Promise<PersonRow[]> {
   const directory = await supabase.rpc("people_directory");
@@ -203,7 +210,8 @@ export function useStaffDirectory() {
     queryFn: async () => {
       const data = await loadPeopleDirectory();
       return data.map(
-        ({ resume: _resume, department_id: _departmentId, ...person }) => person,
+        ({ resume: _resume, admin_notes: _adminNotes, department_id: _departmentId, ...person }) =>
+          person,
       ) as StaffDirectoryRow[];
     },
   });

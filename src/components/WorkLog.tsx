@@ -21,6 +21,7 @@ import { REPORT_TYPE_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { videoPosterCandidates } from "@/lib/videos";
 import {
+  formatWorkDuration,
   isGroupReport,
   participantsLabel,
   reportStamp,
@@ -343,7 +344,7 @@ export function ReportBadges({ report }: { report: ReportRow }) {
         {t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type)}
         {report.activity_detail ? ` · ${report.activity_detail}` : ""}
       </Badge>
-      <Badge variant="outline">{Number(report.hours_spent).toFixed(1)}h</Badge>
+      <Badge variant="outline">{formatWorkDuration(report.hours_spent)}</Badge>
       {isGroupReport(report) ? (
         <Badge variant="outline" className="gap-1">
           <Users className="size-3" aria-hidden="true" />
@@ -483,7 +484,7 @@ export function WorkLogDialog({
                       <span className="font-medium text-foreground">{previous.title}</span>
                       <span className="text-muted-foreground">
                         {" "}
-                        · {reportStamp(previous)} · {Number(previous.hours_spent).toFixed(1)}h ·{" "}
+                        · {reportStamp(previous)} · {formatWorkDuration(previous.hours_spent)} ·{" "}
                         {t("Superseded")}
                       </span>
                     </summary>
