@@ -34,6 +34,7 @@ import {
   personDetailsSchema,
   personMutationSchema,
   roleMutationSchema,
+  staffCredentialsSchema,
 } from "@/lib/validation";
 
 type HeldRole = { id: string; user_id: string; role: AppRole };
@@ -186,6 +187,8 @@ function PersonDialog({
   const [salaryType, setSalaryType] = useState(compensation?.salary_type ?? "monthly");
   const [currency, setCurrency] = useState(compensation?.currency ?? "USD");
   const [hours, setHours] = useState(String(compensation?.standard_hours ?? 160));
+  const [username, setUsername] = useState(person?.email ? staffLoginLabel(person.email) : "");
+  const [password, setPassword] = useState("");
 
   useEffect(() => {
     setSalary(String(compensation?.salary_amount ?? 0));
@@ -265,6 +268,32 @@ function PersonDialog({
     onSuccess: () => {
       toast.success(t("Role updated"));
       refreshRoles();
+    },
+    onError: (error) => showError(error, t),
+  });
+
+  // Usernames and passwords live in Supabase Auth, so an edge function running
+  // with the service role makes the change after re-checking the caller.
+  const saveCredentials = useMutation({
+    mutationFn: async () => {
+      if (!person) throw new Error(t("Operation failed"));
+      const currentUsername = person.email ? staffLoginLabel(person.email) : "";
+      const parsed = staffCredentialsSchema.safeParse({
+        user_id: person.id,
+        ...(username && username !== currentUsername ? { username } : {}),
+        ...(password ? { password } : {}),
+      });
+      if (!parsed.success) throw new Error(firstValidationError(parsed.error));
+      const { data, error } = await supabase.functions.invoke("admin-update-credentials", {
+        body: parsed.data,
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+    },
+    onSuccess: () => {
+      toast.success(t("Login updated"));
+      setPassword("");
+      refreshPeople();
     },
     onError: (error) => showError(error, t),
   });
@@ -437,6 +466,49 @@ function PersonDialog({
               >
                 {t(person.is_active ? "Deactivate" : "Reactivate")}
               </button>
+            </section>
+
+            <section className="space-y-3 border-t border-border pt-4">
+              <div>
+                <h3 className="logbook-label">{t("Login")}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t("Leave the password blank to keep the current one.")}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Username" id={`username-${person.id}`}>
+                  <Input
+                    id={`username-${person.id}`}
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value.toLowerCase())}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    autoComplete="off"
+                    minLength={3}
+                  />
+                </Field>
+                <Field label="New password" id={`password-${person.id}`}>
+                  <Input
+                    id={`password-${person.id}`}
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="new-password"
+                    minLength={8}
+                    placeholder={t("Leave blank to keep")}
+                  />
+                </Field>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  type="button"
+                  onClick={() => saveCredentials.mutate()}
+                  disabled={saveCredentials.isPending}
+                >
+                  {saveCredentials.isPending ? t("Saving…") : t("Save login")}
+                </Button>
+              </div>
             </section>
 
             {canCompensate ? (

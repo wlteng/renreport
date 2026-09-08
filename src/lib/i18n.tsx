@@ -357,6 +357,13 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "Enter how many days this work took, up to 31.": "填写这项工作持续了多少天，最多 31 天。",
   "Switch to days for work that ran over several days.": "跨越多天的工作请切换为「天」。",
   "Job titles, roles and departments are set by an admin.": "职位、角色和部门由管理员设置。",
+  Login: "登录信息",
+  "Login updated": "登录信息已更新",
+  "Save login": "保存登录信息",
+  "Leave blank to keep": "留空则不修改",
+  "Leave the password blank to keep the current one.": "密码留空表示保持原密码不变。",
+  "Enter a new username or a new password": "请填写新的用户名或新密码",
+  "That username is already taken": "该用户名已被使用",
   "Editable for 1 hour after submission.": "提交后 1 小时内可编辑或删除。",
   "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.":
     "已超过 1 小时，不能再编辑或删除，请提交修正版本。",

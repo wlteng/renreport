@@ -234,6 +234,24 @@ export const createStaffSchema = compensationSchema.omit({ user_id: true }).exte
   role: z.literal("staff"),
 });
 
+export const staffCredentialsSchema = z
+  .object({
+    user_id: z.string().uuid(),
+    username: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .min(3, "Username must be at least 3 characters")
+      .max(32)
+      .regex(/^[a-z0-9][a-z0-9_-]*$/, "Use lowercase letters, numbers, underscores, or hyphens")
+      .optional(),
+    password: z.string().min(8, "Password must be at least 8 characters").max(128).optional(),
+  })
+  .refine((value) => value.username !== undefined || value.password !== undefined, {
+    message: "Enter a new username or a new password",
+    path: ["username"],
+  });
+
 export function firstValidationError(error: z.ZodError): string {
   const issue = error.issues[0];
   if (!issue) return "Please check the form and try again";
