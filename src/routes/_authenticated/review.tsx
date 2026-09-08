@@ -5,10 +5,11 @@ import { z } from "zod";
 
 import { PageHeader } from "@/components/AppShell";
 import {
-  ImageLightbox,
+  MediaLightbox,
   ParticipantAvatars,
   WorkLogDialog,
   WorkLogThumbnail,
+  type LightboxMedia,
 } from "@/components/WorkLog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -99,7 +100,7 @@ function FeedRow({
   participants,
   projectName,
   onOpen,
-  onOpenImage,
+  onOpenMedia,
 }: {
   report: ReportRow;
   replaces: ReportRow | undefined;
@@ -108,7 +109,7 @@ function FeedRow({
   participants: WorkLogPerson[] | undefined;
   projectName: string;
   onOpen: () => void;
-  onOpenImage: (src: string) => void;
+  onOpenMedia: (media: LightboxMedia) => void;
 }) {
   const { t } = useLanguage();
   return (
@@ -158,7 +159,11 @@ function FeedRow({
           {report.content}
         </p>
       </div>
-      <WorkLogThumbnail images={report.image_urls} onOpen={onOpenImage} />
+      <WorkLogThumbnail
+        images={report.image_urls}
+        videos={report.video_urls}
+        onOpen={onOpenMedia}
+      />
     </div>
   );
 }
@@ -183,7 +188,7 @@ function Review() {
 
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<LightboxMedia | null>(null);
 
   const reports = useVisibleReports({ from, to, userId, projectId, type });
   const all = useMemo(() => reports.data ?? [], [reports.data]);
@@ -409,7 +414,7 @@ function Review() {
               participants={participantsFor(report)}
               projectName={projectName(report.project_id)}
               onOpen={() => setSelectedId(report.id)}
-              onOpenImage={setLightbox}
+              onOpenMedia={setLightbox}
             />
           ))}
           {!reports.isLoading && current.length === 0 ? (
@@ -428,9 +433,9 @@ function Review() {
         participants={selected ? participantsFor(selected) : undefined}
         showCloseAction={false}
         onClose={() => setSelectedId(null)}
-        onOpenImage={setLightbox}
+        onOpenMedia={setLightbox}
       />
-      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
+      <MediaLightbox media={lightbox} onClose={() => setLightbox(null)} />
     </>
   );
 }

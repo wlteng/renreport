@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FilePenLine, ImagePlus, Users, X } from "lucide-react";
+import { FilePenLine, ImagePlus, Play, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { PageHeader } from "@/components/AppShell";
+import { WorkLogVideoPoster } from "@/components/WorkLog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,17 @@ import { isWithinEditWindow } from "@/lib/reportEdits";
 import { hasCapability, REPORT_TYPES, type ReportType } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { firstValidationError, workLogSchema } from "@/lib/validation";
+import {
+  formatDuration,
+  looksLikeVideo,
+  previewVideo,
+  REPORT_VIDEO_LIMIT,
+  REPORT_VIDEO_MAX_BYTES,
+  videoExtension,
+  videoMimeType,
+  videoPosterCandidates,
+  videoPosterPath,
+} from "@/lib/videos";
 import { participantsLabel } from "@/lib/workLogs";
 
 type ActivityExtraField = "detail" | "output" | "blockers" | "links";
@@ -89,6 +101,15 @@ function activityExtraFieldCount(type: ReportType) {
 }
 
 type PendingImage = { file: File; id: string; preview: string };
+type PendingVideo = {
+  file: File;
+  id: string;
+  mimeType: string;
+  preview: string;
+  poster: Blob | null;
+  posterUrl: string | null;
+  duration: number | null;
+};
 type DurationUnit = "days" | "hours" | "mins";
 type FormMode = "new" | "edit" | "correct";
 
@@ -100,6 +121,9 @@ const IMAGE_EXTENSION: Record<string, string> = {
 
 /** Mirrors the reports_participants_check constraint in the database. */
 const PARTICIPANT_LIMIT = 50;
+
+/** Photos are re-encoded as WebP at this quality before upload. */
+const PHOTO_QUALITY = 0.75;
 
 // ?edit=<id> edits a work log; ?correct=<id> submits a correction; ?projectId=<id> preselects a project.
 const submitWorkSearchSchema = z.object({
@@ -165,7 +189,10 @@ function SubmitWork() {
   const [links, setLinks] = useState("");
   const [images, setImages] = useState<PendingImage[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>([]);
-  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [videos, setVideos] = useState<PendingVideo[]>([]);
+  const [existingVideos, setExistingVideos] = useState<string[]>([]);
+  const [isDraggingMedia, setIsDraggingMedia] = useState(false);
+  const [uploadStep, setUploadStep] = useState<string | null>(null);
   // Team log participants other than the submitter, plus whether the submitter is included.
   const [participantIds, setParticipantIds] = useState<string[]>([]);
   const [includeMe, setIncludeMe] = useState(true);
@@ -271,37 +298,87 @@ function SubmitWork() {
     setBlockers(report.blockers ?? "");
     setLinks(report.links ?? "");
     setExistingImages(report.image_urls ?? []);
+    setExistingVideos(report.video_urls ?? []);
     const listed = report.participant_ids ?? [];
     setIncludeMe(listed.length === 0 || listed.includes(report.user_id));
     setParticipantIds(listed.filter((id) => id !== report.user_id));
   }, [mode, source.data]);
 
-  async function addImages(files: FileList | File[]) {
-    const candidates = Array.from(files);
-    const valid = candidates.filter(
+  function trackPreview(url: string) {
+    previewUrls.current.add(url);
+    return url;
+  }
+
+  function releasePreview(url: string | null) {
+    if (!url) return;
+    URL.revokeObjectURL(url);
+    previewUrls.current.delete(url);
+  }
+
+  async function addImages(files: File[]) {
+    const valid = files.filter(
       (file) => REPORT_IMAGE_TYPES.has(file.type) && file.size <= REPORT_IMAGE_MAX_BYTES,
     );
-    if (valid.length !== candidates.length) toast.error(t("Use JPG, PNG or WebP under 5 MB"));
+    if (valid.length !== files.length) toast.error(t("Use JPG, PNG or WebP under 5 MB"));
     const available = REPORT_IMAGE_LIMIT - images.length - existingImages.length;
     if (valid.length > available) toast.error(t("You can add up to 5 images"));
-    // Phone photos are downscaled in the browser so uploads and the feed stay fast.
+    // Phone photos are downscaled and saved as WebP in the browser so uploads and the feed stay fast.
     const additions = await Promise.all(
       valid.slice(0, available).map(async (original) => {
-        const file = await compressImage(original);
-        const preview = URL.createObjectURL(file);
-        previewUrls.current.add(preview);
-        return { file, preview, id: crypto.randomUUID() };
+        const file = await compressImage(original, { quality: PHOTO_QUALITY });
+        return { file, preview: trackPreview(URL.createObjectURL(file)), id: crypto.randomUUID() };
       }),
     );
     setImages((current) => [...current, ...additions]);
   }
 
+  async function addVideos(files: File[]) {
+    const valid = files.filter(
+      (file) => videoMimeType(file) !== null && file.size <= REPORT_VIDEO_MAX_BYTES,
+    );
+    if (valid.length !== files.length) toast.error(t("Use MP4, WebM or MOV under 50 MB"));
+    const available = REPORT_VIDEO_LIMIT - videos.length - existingVideos.length;
+    if (valid.length > available) toast.error(t("You can add up to 2 videos"));
+    // Videos are uploaded as recorded; only a small poster frame is captured here.
+    const additions = await Promise.all(
+      valid.slice(0, available).map(async (file) => {
+        const { duration, poster } = await previewVideo(file);
+        return {
+          file,
+          id: crypto.randomUUID(),
+          mimeType: videoMimeType(file)!,
+          preview: trackPreview(URL.createObjectURL(file)),
+          poster,
+          posterUrl: poster ? trackPreview(URL.createObjectURL(poster)) : null,
+          duration,
+        };
+      }),
+    );
+    setVideos((current) => [...current, ...additions]);
+  }
+
+  async function addFiles(files: FileList | File[]) {
+    const candidates = Array.from(files);
+    await Promise.all([
+      addImages(candidates.filter((file) => !looksLikeVideo(file))),
+      addVideos(candidates.filter(looksLikeVideo)),
+    ]);
+  }
+
   function removeImage(id: string) {
     setImages((current) => {
       const image = current.find((item) => item.id === id);
-      if (image) {
-        URL.revokeObjectURL(image.preview);
-        previewUrls.current.delete(image.preview);
+      if (image) releasePreview(image.preview);
+      return current.filter((item) => item.id !== id);
+    });
+  }
+
+  function removeVideo(id: string) {
+    setVideos((current) => {
+      const video = current.find((item) => item.id === id);
+      if (video) {
+        releasePreview(video.preview);
+        releasePreview(video.posterUrl);
       }
       return current.filter((item) => item.id !== id);
     });
@@ -363,29 +440,74 @@ function SubmitWork() {
       }
       if (mode !== "new" && !source.data) throw new Error(t("Work log not found."));
       const reportId = mode === "edit" && editId ? editId : crypto.randomUUID();
+      const folder = `${user.id}/${reportId}`;
+      const uploaded: string[] = [];
       const imagePaths: string[] = [];
+      const videoPaths: string[] = [];
+      const upload = async (path: string, body: Blob, contentType: string) => {
+        const { error } = await supabase.storage
+          .from(REPORT_IMAGE_BUCKET)
+          .upload(path, body, { contentType, upsert: false });
+        if (error) throw error;
+        uploaded.push(path);
+      };
       try {
+        if (images.length) setUploadStep(t("Uploading photos…"));
         for (const image of images) {
-          const path = `${user.id}/${reportId}/${crypto.randomUUID()}.${IMAGE_EXTENSION[image.file.type]}`;
-          const { error: uploadError } = await supabase.storage
-            .from(REPORT_IMAGE_BUCKET)
-            .upload(path, image.file, { contentType: image.file.type, upsert: false });
-          if (uploadError) throw uploadError;
+          const path = `${folder}/${crypto.randomUUID()}.${IMAGE_EXTENSION[image.file.type]}`;
+          await upload(path, image.file, image.file.type);
           imagePaths.push(path);
+        }
+        for (const [index, video] of videos.entries()) {
+          setUploadStep(
+            t("Uploading video {n} of {total}…")
+              .replace("{n}", String(index + 1))
+              .replace("{total}", String(videos.length)),
+          );
+          const path = `${folder}/${crypto.randomUUID()}.${videoExtension(video.mimeType)}`;
+          await upload(path, video.file, video.mimeType);
+          videoPaths.push(path);
+          if (video.poster) {
+            await upload(videoPosterPath(path, video.poster.type), video.poster, video.poster.type);
+          }
         }
         if (mode === "correct") {
           // Each work log owns its files, so deleting one never breaks another.
+          setUploadStep(t("Copying attachments…"));
           for (const path of existingImages) {
             const extension = path.split(".").pop() ?? "jpg";
-            const copy = `${user.id}/${reportId}/${crypto.randomUUID()}.${extension}`;
+            const copy = `${folder}/${crypto.randomUUID()}.${extension}`;
             const { error: copyError } = await supabase.storage
               .from(REPORT_IMAGE_BUCKET)
               .copy(path, copy);
             if (copyError) throw copyError;
+            uploaded.push(copy);
             imagePaths.push(copy);
+          }
+          for (const path of existingVideos) {
+            const extension = path.split(".").pop() ?? "mp4";
+            const copy = `${folder}/${crypto.randomUUID()}.${extension}`;
+            const { error: copyError } = await supabase.storage
+              .from(REPORT_IMAGE_BUCKET)
+              .copy(path, copy);
+            if (copyError) throw copyError;
+            uploaded.push(copy);
+            videoPaths.push(copy);
+            // The poster may be WebP or JPEG, or missing; copy whichever exists.
+            const posterSources = videoPosterCandidates(path);
+            const posterTargets = videoPosterCandidates(copy);
+            for (const [index, posterSource] of posterSources.entries()) {
+              const posterTarget = posterTargets[index];
+              if (!posterTarget) continue;
+              const { error: posterError } = await supabase.storage
+                .from(REPORT_IMAGE_BUCKET)
+                .copy(posterSource, posterTarget);
+              if (!posterError) uploaded.push(posterTarget);
+            }
           }
         }
         const allImages = mode === "correct" ? imagePaths : [...existingImages, ...imagePaths];
+        const allVideos = mode === "correct" ? videoPaths : [...existingVideos, ...videoPaths];
         const record = {
           ...input,
           activity_detail: input.activity_detail ?? null,
@@ -394,16 +516,26 @@ function SubmitWork() {
           blockers: input.blockers ?? null,
           links: input.links ?? null,
           image_urls: allImages.length ? allImages : null,
+          video_urls: allVideos.length ? allVideos : null,
           participant_ids: groupParticipantIds,
         };
+        setUploadStep(null);
         if (mode === "edit") {
           const { error } = await supabase.from("reports").update(record).eq("id", reportId);
           if (error) throw error;
           // Only files that belong to this log are removed; a correction may share older ones.
-          const dropped = (source.data?.image_urls ?? []).filter(
-            (path) => !existingImages.includes(path) && path.startsWith(`${user.id}/${reportId}/`),
+          const ownFile = (path: string) => path.startsWith(`${folder}/`);
+          const droppedImages = (source.data?.image_urls ?? []).filter(
+            (path) => !existingImages.includes(path) && ownFile(path),
           );
-          await removeReportImages(dropped).catch(() => undefined);
+          const droppedVideos = (source.data?.video_urls ?? []).filter(
+            (path) => !existingVideos.includes(path) && ownFile(path),
+          );
+          await removeReportImages([
+            ...droppedImages,
+            ...droppedVideos,
+            ...droppedVideos.flatMap(videoPosterCandidates),
+          ]).catch(() => undefined);
         } else {
           const { error } = await supabase.from("reports").insert({
             ...record,
@@ -414,7 +546,7 @@ function SubmitWork() {
           if (error) throw error;
         }
       } catch (error) {
-        await removeReportImages(imagePaths).catch(() => undefined);
+        await removeReportImages(uploaded).catch(() => undefined);
         throw error;
       }
     },
@@ -435,6 +567,7 @@ function SubmitWork() {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : "Could not submit work"),
+    onSettled: () => setUploadStep(null),
   });
 
   if (!allowed) {
@@ -532,6 +665,17 @@ function SubmitWork() {
       </>
     );
   }
+
+  const removeTileButton = (label: string, onClick: () => void) => (
+    <button
+      type="button"
+      aria-label={label}
+      className="absolute right-1 top-1 grid size-7 place-items-center rounded-full bg-background/90 text-foreground"
+      onClick={onClick}
+    >
+      <X className="size-4" aria-hidden="true" />
+    </button>
+  );
 
   return (
     <>
@@ -816,68 +960,80 @@ function SubmitWork() {
         <div
           className={cn(
             "rounded-lg border border-dashed border-border bg-muted/20 p-3 transition-colors",
-            isDraggingImage && "border-foreground bg-muted/50",
+            isDraggingMedia && "border-foreground bg-muted/50",
           )}
           onDragEnter={(event) => {
             event.preventDefault();
-            setIsDraggingImage(true);
+            setIsDraggingMedia(true);
           }}
           onDragOver={(event) => event.preventDefault()}
           onDragLeave={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-              setIsDraggingImage(false);
+              setIsDraggingMedia(false);
             }
           }}
           onDrop={(event) => {
             event.preventDefault();
-            setIsDraggingImage(false);
-            void addImages(event.dataTransfer.files);
+            setIsDraggingMedia(false);
+            void addFiles(event.dataTransfer.files);
           }}
         >
           <label
-            htmlFor="report-images"
+            htmlFor="report-media"
             className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-md text-center"
           >
             <ImagePlus className="size-5 text-muted-foreground" aria-hidden="true" />
-            <span className="text-sm font-medium">{t("Drag images here or tap to choose")}</span>
+            <span className="text-sm font-medium">
+              {t("Drag photos or videos here or tap to choose")}
+            </span>
             <span className="text-xs text-muted-foreground">
               {t("JPG, PNG or WebP · Up to 5 · 5 MB each")}
             </span>
+            <span className="text-xs text-muted-foreground">
+              {t("MP4, WebM or MOV · Up to 2 · 50 MB each")}
+            </span>
           </label>
           <input
-            id="report-images"
+            id="report-media"
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
             multiple
             className="sr-only"
             onChange={(event) => {
-              if (event.target.files) void addImages(event.target.files);
+              if (event.target.files) void addFiles(event.target.files);
               event.target.value = "";
             }}
           />
-          {existingImages.length ? (
+          {existingImages.length || existingVideos.length ? (
             <div className="mt-3">
-              <p className="mb-2 text-xs text-muted-foreground">{t("Existing images")}</p>
+              <p className="mb-2 text-xs text-muted-foreground">{t("Existing attachments")}</p>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                 {existingImages.map((path) => (
                   <div key={path} className="relative aspect-square overflow-hidden rounded-md">
                     <img src={reportImageUrl(path)} alt="" className="size-full object-cover" />
-                    <button
-                      type="button"
-                      aria-label={t("Remove image")}
-                      className="absolute right-1 top-1 grid size-7 place-items-center rounded-full bg-background/90 text-foreground"
-                      onClick={() =>
-                        setExistingImages((current) => current.filter((item) => item !== path))
-                      }
-                    >
-                      <X className="size-4" aria-hidden="true" />
-                    </button>
+                    {removeTileButton(t("Remove image"), () =>
+                      setExistingImages((current) => current.filter((item) => item !== path)),
+                    )}
+                  </div>
+                ))}
+                {existingVideos.map((path) => (
+                  <div
+                    key={path}
+                    className="relative aspect-square overflow-hidden rounded-md bg-black"
+                  >
+                    <WorkLogVideoPoster path={path} className="size-full object-cover" />
+                    <span className="pointer-events-none absolute inset-0 grid place-items-center">
+                      <Play className="size-6 fill-current text-white" aria-hidden="true" />
+                    </span>
+                    {removeTileButton(t("Remove video"), () =>
+                      setExistingVideos((current) => current.filter((item) => item !== path)),
+                    )}
                   </div>
                 ))}
               </div>
             </div>
           ) : null}
-          {images.length ? (
+          {images.length || videos.length ? (
             <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
               {images.map((image) => (
                 <div key={image.id} className="relative aspect-square overflow-hidden rounded-md">
@@ -886,18 +1042,43 @@ function SubmitWork() {
                     alt={image.file.name}
                     className="size-full object-cover"
                   />
-                  <button
-                    type="button"
-                    aria-label={t("Remove image")}
-                    className="absolute right-1 top-1 grid size-7 place-items-center rounded-full bg-background/90 text-foreground"
-                    onClick={() => removeImage(image.id)}
-                  >
-                    <X className="size-4" aria-hidden="true" />
-                  </button>
+                  {removeTileButton(t("Remove image"), () => removeImage(image.id))}
+                </div>
+              ))}
+              {videos.map((video) => (
+                <div
+                  key={video.id}
+                  className="relative aspect-square overflow-hidden rounded-md bg-black"
+                >
+                  {video.posterUrl ? (
+                    <img src={video.posterUrl} alt="" className="size-full object-cover" />
+                  ) : (
+                    <video
+                      src={video.preview}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="size-full object-cover"
+                    />
+                  )}
+                  <span className="pointer-events-none absolute inset-0 grid place-items-center">
+                    <Play className="size-6 fill-current text-white" aria-hidden="true" />
+                  </span>
+                  {video.duration !== null ? (
+                    <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1 py-0.5 text-[10px] font-medium tabular-nums text-white">
+                      {formatDuration(video.duration)}
+                    </span>
+                  ) : null}
+                  {removeTileButton(t("Remove video"), () => removeVideo(video.id))}
                 </div>
               ))}
             </div>
           ) : null}
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            {t(
+              "Photos are compressed to WebP in your browser before upload. Videos are uploaded as recorded.",
+            )}
+          </p>
         </div>
         {hasSpecialFields ? (
           <section className="space-y-4">
@@ -961,7 +1142,12 @@ function SubmitWork() {
             ) : null}
           </section>
         ) : null}
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {uploadStep ? (
+            <p className="mr-auto text-xs text-muted-foreground" role="status">
+              {uploadStep}
+            </p>
+          ) : null}
           <Button type="button" variant="outline" onClick={() => navigate({ to: "/dashboard" })}>
             {t("Cancel")}
           </Button>

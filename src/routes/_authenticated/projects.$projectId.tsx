@@ -29,10 +29,12 @@ import { PageHeader } from "@/components/AppShell";
 import { ExpenseDialog } from "@/components/ExpenseDialog";
 import { ProjectEditorDialog, type ProjectEditorValue } from "@/components/ProjectEditorDialog";
 import {
-  ImageLightbox,
+  MediaLightbox,
   ParticipantAvatars,
   WorkLogDialog,
   WorkLogImages,
+  WorkLogVideos,
+  type LightboxMedia,
 } from "@/components/WorkLog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -206,7 +208,7 @@ function ProjectDetailPage() {
   const queryClient = useQueryClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<LightboxMedia | null>(null);
   const [taskOpen, setTaskOpen] = useState(false);
   const [taskDescription, setTaskDescription] = useState("");
   const [taskAssignee, setTaskAssignee] = useState("");
@@ -782,9 +784,9 @@ function ProjectDetailPage() {
             : undefined
         }
         onClose={() => setSelectedReportId(null)}
-        onOpenImage={setLightbox}
+        onOpenMedia={setLightbox}
       />
-      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
+      <MediaLightbox media={lightbox} onClose={() => setLightbox(null)} />
 
       <ProjectEditorDialog
         open={settingsOpen && canManageProject}
@@ -1699,10 +1701,15 @@ function ProjectDetailPage() {
                         <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                           {report.content}
                         </p>
-                        {report.image_urls?.length ? (
-                          <div className="mt-2">
+                        {report.image_urls?.length || report.video_urls?.length ? (
+                          <div className="mt-2 space-y-2">
                             <WorkLogImages
                               images={report.image_urls}
+                              compact
+                              onOpen={setLightbox}
+                            />
+                            <WorkLogVideos
+                              videos={report.video_urls}
                               compact
                               onOpen={setLightbox}
                             />

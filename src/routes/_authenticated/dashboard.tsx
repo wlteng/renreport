@@ -4,7 +4,12 @@ import { PenLine, Pencil, Trash2, Users } from "lucide-react";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { ImageLightbox, WorkLogDialog, WorkLogThumbnail } from "@/components/WorkLog";
+import {
+  MediaLightbox,
+  WorkLogDialog,
+  WorkLogThumbnail,
+  type LightboxMedia,
+} from "@/components/WorkLog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -118,12 +123,12 @@ function WorkLogRow({
   report,
   projectName,
   onOpen,
-  onOpenImage,
+  onOpenMedia,
 }: {
   report: ReportRow;
   projectName: string;
   onOpen: () => void;
-  onOpenImage: (src: string) => void;
+  onOpenMedia: (media: LightboxMedia) => void;
 }) {
   const { t } = useLanguage();
   return (
@@ -164,7 +169,11 @@ function WorkLogRow({
           {report.content}
         </p>
       </div>
-      <WorkLogThumbnail images={report.image_urls} onOpen={onOpenImage} />
+      <WorkLogThumbnail
+        images={report.image_urls}
+        videos={report.video_urls}
+        onOpen={onOpenMedia}
+      />
     </div>
   );
 }
@@ -265,7 +274,7 @@ function MyWorkSection({
   const [visibleCount, setVisibleCount] = useState(RECENT_WORK_PAGE_SIZE);
   const [showExpandOptions, setShowExpandOptions] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<LightboxMedia | null>(null);
 
   const all = useMemo(() => reports.data ?? [], [reports.data]);
   const current = useMemo(() => currentReports(all), [all]);
@@ -342,7 +351,7 @@ function MyWorkSection({
                   report={report}
                   projectName={projectName(report.project_id)}
                   onOpen={() => setSelectedId(report.id)}
-                  onOpenImage={setLightbox}
+                  onOpenMedia={setLightbox}
                 />
               ))}
             </div>
@@ -404,7 +413,7 @@ function MyWorkSection({
         personName={isAuthor ? undefined : authorName}
         participants={participants}
         onClose={() => setSelectedId(null)}
-        onOpenImage={setLightbox}
+        onOpenMedia={setLightbox}
         notice={
           selected && !isAuthor ? (
             <p className="text-xs text-muted-foreground">
@@ -455,7 +464,7 @@ function MyWorkSection({
           ) : null
         }
       />
-      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
+      <MediaLightbox media={lightbox} onClose={() => setLightbox(null)} />
     </section>
   );
 }

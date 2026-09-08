@@ -1,4 +1,4 @@
-import { Minus, Plus, RotateCcw, Users } from "lucide-react";
+import { Film, Minus, Play, Plus, RotateCcw, Users } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -19,6 +19,7 @@ import { personDisplayName, personInitials } from "@/lib/people";
 import { reportImageUrl } from "@/lib/reportImages";
 import { REPORT_TYPE_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
 import { cn } from "@/lib/utils";
+import { videoPosterCandidates } from "@/lib/videos";
 import {
   isGroupReport,
   participantsLabel,
@@ -29,31 +30,54 @@ import {
 
 const ZOOM_LEVELS = [1, 1.5, 2, 3];
 
-/** Minimal full-screen photo viewer with zoom in, zoom out and reset. */
-export function ImageLightbox({ src, onClose }: { src: string | null; onClose: () => void }) {
+/** A photo or video opened full screen. */
+export type LightboxMedia = { kind: "image" | "video"; src: string };
+
+/** Minimal full-screen viewer: photos zoom in and out, videos play with the native controls. */
+export function MediaLightbox({
+  media,
+  onClose,
+}: {
+  media: LightboxMedia | null;
+  onClose: () => void;
+}) {
   const { t } = useLanguage();
   const [zoom, setZoom] = useState(1);
-  useEffect(() => setZoom(1), [src]);
+  useEffect(() => setZoom(1), [media]);
   const step = (direction: 1 | -1) =>
     setZoom((current) => {
       const index = ZOOM_LEVELS.indexOf(current);
       return ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, Math.max(0, index + direction))] ?? 1;
     });
+  const isVideo = media?.kind === "video";
   return (
     <Dialog
-      open={src !== null}
+      open={media !== null}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
     >
       <DialogContent className="block h-[100dvh] max-h-none w-screen max-w-none overflow-hidden rounded-none border-0 bg-black/95 p-0 shadow-none sm:p-0 [&>button]:right-3 [&>button]:top-3 [&>button]:z-10 [&>button]:rounded-full [&>button]:bg-black/60 [&>button]:p-2 [&>button]:text-white [&>button]:opacity-100">
-        <DialogTitle className="sr-only">{t("Photo")}</DialogTitle>
-        <DialogDescription className="sr-only">{t("Zoom in")}</DialogDescription>
-        {src ? (
+        <DialogTitle className="sr-only">{t(isVideo ? "Video" : "Photo")}</DialogTitle>
+        <DialogDescription className="sr-only">
+          {t(isVideo ? "Play video" : "Zoom in")}
+        </DialogDescription>
+        {media && isVideo ? (
+          <div className="grid h-full w-full place-items-center">
+            {/* The click that opened the viewer counts as the gesture autoplay needs. */}
+            <video
+              src={media.src}
+              controls
+              autoPlay
+              playsInline
+              className="max-h-[100dvh] max-w-[100vw]"
+            />
+          </div>
+        ) : media ? (
           <div className="h-full w-full overflow-auto">
             <div className="flex h-max min-h-full w-max min-w-full items-center justify-center">
               <img
-                src={src}
+                src={media.src}
                 alt=""
                 draggable={false}
                 onDoubleClick={() => setZoom((current) => (current === 1 ? 2 : 1))}
@@ -66,44 +90,46 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
             </div>
           </div>
         ) : null}
-        <div className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+16px)] left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/60 p-1">
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="rounded-full text-white hover:bg-white/15 hover:text-white"
-            aria-label={t("Zoom out")}
-            disabled={zoom === ZOOM_LEVELS[0]}
-            onClick={() => step(-1)}
-          >
-            <Minus />
-          </Button>
-          <span className="min-w-12 text-center text-xs font-medium tabular-nums text-white">
-            {Math.round(zoom * 100)}%
-          </span>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="rounded-full text-white hover:bg-white/15 hover:text-white"
-            aria-label={t("Zoom in")}
-            disabled={zoom === ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
-            onClick={() => step(1)}
-          >
-            <Plus />
-          </Button>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="rounded-full text-white hover:bg-white/15 hover:text-white"
-            aria-label={t("Reset zoom")}
-            disabled={zoom === 1}
-            onClick={() => setZoom(1)}
-          >
-            <RotateCcw />
-          </Button>
-        </div>
+        {media && !isVideo ? (
+          <div className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+16px)] left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/60 p-1">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="rounded-full text-white hover:bg-white/15 hover:text-white"
+              aria-label={t("Zoom out")}
+              disabled={zoom === ZOOM_LEVELS[0]}
+              onClick={() => step(-1)}
+            >
+              <Minus />
+            </Button>
+            <span className="min-w-12 text-center text-xs font-medium tabular-nums text-white">
+              {Math.round(zoom * 100)}%
+            </span>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="rounded-full text-white hover:bg-white/15 hover:text-white"
+              aria-label={t("Zoom in")}
+              disabled={zoom === ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+              onClick={() => step(1)}
+            >
+              <Plus />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="rounded-full text-white hover:bg-white/15 hover:text-white"
+              aria-label={t("Reset zoom")}
+              disabled={zoom === 1}
+              onClick={() => setZoom(1)}
+            >
+              <RotateCcw />
+            </Button>
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );
@@ -111,7 +137,7 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
 
 /**
  * Photos of a work log. A single photo is shown directly; several become
- * thumbnails. Every photo opens the lightbox.
+ * thumbnails. Every photo opens the viewer.
  */
 export function WorkLogImages({
   images,
@@ -120,13 +146,13 @@ export function WorkLogImages({
 }: {
   images: string[] | null | undefined;
   compact?: boolean;
-  onOpen: (src: string) => void;
+  onOpen: (media: LightboxMedia) => void;
 }) {
   const { t } = useLanguage();
   if (!images?.length) return null;
   const open = (image: string) => (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
-    onOpen(reportImageUrl(image));
+    onOpen({ kind: "image", src: reportImageUrl(image) });
   };
   if (images.length === 1) {
     const image = images[0]!;
@@ -162,31 +188,113 @@ export function WorkLogImages({
   );
 }
 
-/** Compact feed preview that opens the first attached photo in the lightbox. */
+/** Poster frame of a stored video, falling back to an icon when none was captured. */
+export function WorkLogVideoPoster({ path, className }: { path: string; className?: string }) {
+  const [attempt, setAttempt] = useState(0);
+  const candidate = videoPosterCandidates(path)[attempt];
+  if (!candidate) {
+    return (
+      <div className={cn("grid place-items-center bg-muted text-muted-foreground", className)}>
+        <Film className="size-6" aria-hidden="true" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={reportImageUrl(candidate)}
+      alt=""
+      className={className}
+      onError={() => setAttempt((current) => current + 1)}
+    />
+  );
+}
+
+function PlayOverlay() {
+  return (
+    <span className="pointer-events-none absolute inset-0 grid place-items-center">
+      <span className="grid size-9 place-items-center rounded-full bg-black/60 text-white">
+        <Play className="size-4 fill-current" aria-hidden="true" />
+      </span>
+    </span>
+  );
+}
+
+/** Videos of a work log as poster tiles; each opens the player. */
+export function WorkLogVideos({
+  videos,
+  compact = false,
+  onOpen,
+}: {
+  videos: string[] | null | undefined;
+  compact?: boolean;
+  onOpen: (media: LightboxMedia) => void;
+}) {
+  const { t } = useLanguage();
+  if (!videos?.length) return null;
+  const single = videos.length === 1 && !compact;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {videos.map((video) => (
+        <button
+          key={video}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen({ kind: "video", src: reportImageUrl(video) });
+          }}
+          aria-label={t("Play video")}
+          className={cn(
+            "relative shrink-0 overflow-hidden rounded-md bg-black",
+            single ? "aspect-video w-full max-w-md" : compact ? "size-16" : "size-24",
+          )}
+        >
+          <WorkLogVideoPoster path={video} className="size-full object-cover" />
+          <PlayOverlay />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Compact feed preview: the first photo, or the first video's poster, opens the viewer. */
 export function WorkLogThumbnail({
   images,
+  videos,
   onOpen,
 }: {
   images: string[] | null | undefined;
-  onOpen: (src: string) => void;
+  videos?: string[] | null | undefined;
+  onOpen: (media: LightboxMedia) => void;
 }) {
   const { t } = useLanguage();
-  if (!images?.length) return null;
-  const image = images[0]!;
+  const image = images?.[0];
+  const video = videos?.[0];
+  const total = (images?.length ?? 0) + (videos?.length ?? 0);
+  if (!image && !video) return null;
+  const media: LightboxMedia = image
+    ? { kind: "image", src: reportImageUrl(image) }
+    : { kind: "video", src: reportImageUrl(video!) };
   return (
     <button
       type="button"
       onClick={(event) => {
         event.stopPropagation();
-        onOpen(reportImageUrl(image));
+        onOpen(media);
       }}
-      aria-label={t("Photo")}
+      aria-label={t(image ? "Photo" : "Play video")}
       className="relative size-14 shrink-0 overflow-hidden rounded-lg border border-border bg-muted transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-16"
     >
-      <img src={reportImageUrl(image)} alt="" className="size-full object-cover" />
-      {images.length > 1 ? (
+      {image ? (
+        <img src={reportImageUrl(image)} alt="" className="size-full object-cover" />
+      ) : (
+        <>
+          <WorkLogVideoPoster path={video!} className="size-full object-cover" />
+          <PlayOverlay />
+        </>
+      )}
+      {total > 1 ? (
         <span className="absolute bottom-1 right-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-          +{images.length - 1}
+          +{total - 1}
         </span>
       ) : null}
     </button>
@@ -249,11 +357,11 @@ export function ReportBadges({ report }: { report: ReportRow }) {
 export function ReportBody({
   report,
   compact = false,
-  onOpenImage,
+  onOpenMedia,
 }: {
   report: ReportRow;
   compact?: boolean;
-  onOpenImage: (src: string) => void;
+  onOpenMedia: (media: LightboxMedia) => void;
 }) {
   const { t } = useLanguage();
   return (
@@ -279,7 +387,8 @@ export function ReportBody({
       {report.links ? (
         <p className="break-all text-xs text-muted-foreground">{report.links}</p>
       ) : null}
-      <WorkLogImages images={report.image_urls} compact={compact} onOpen={onOpenImage} />
+      <WorkLogImages images={report.image_urls} compact={compact} onOpen={onOpenMedia} />
+      <WorkLogVideos videos={report.video_urls} compact={compact} onOpen={onOpenMedia} />
     </div>
   );
 }
@@ -295,7 +404,7 @@ export function WorkLogDialog({
   actions,
   showCloseAction = true,
   onClose,
-  onOpenImage,
+  onOpenMedia,
 }: {
   report: ReportRow | null;
   history: ReportRow[];
@@ -307,7 +416,7 @@ export function WorkLogDialog({
   actions?: ReactNode;
   showCloseAction?: boolean;
   onClose: () => void;
-  onOpenImage: (src: string) => void;
+  onOpenMedia: (media: LightboxMedia) => void;
 }) {
   const { t } = useLanguage();
   const contentRef = useRef<HTMLDivElement>(null);
@@ -361,7 +470,7 @@ export function WorkLogDialog({
                 </ul>
               </section>
             ) : null}
-            <ReportBody report={report} onOpenImage={onOpenImage} />
+            <ReportBody report={report} onOpenMedia={onOpenMedia} />
             {history.length ? (
               <section className="space-y-3 border-t border-border pt-4">
                 <h3 className="logbook-label">{t("History")}</h3>
@@ -379,7 +488,7 @@ export function WorkLogDialog({
                       </span>
                     </summary>
                     <div className="mt-2">
-                      <ReportBody report={previous} compact onOpenImage={onOpenImage} />
+                      <ReportBody report={previous} compact onOpenMedia={onOpenMedia} />
                     </div>
                   </details>
                 ))}
