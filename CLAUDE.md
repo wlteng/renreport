@@ -5,6 +5,16 @@ Project-level instructions for Claude Code working in this repository.
 See also `AGENTS.md` for Lovable-specific git constraints (do not rewrite
 published history on the connected branch).
 
+## Workflow
+
+- **Push to `main`.** Work may be developed on a feature branch, but every
+  finished change is merged and pushed to `main` as well — that is the branch
+  Lovable syncs from. Never rewrite published history (see `AGENTS.md`).
+- **Run migrations immediately.** Whenever a change adds a file under
+  `supabase/migrations/`, run the same SQL against the connected Supabase
+  database (Lovable SQL editor / `query_database` on the Renreport project),
+  then verify the result. A migration file alone is not a deployed change.
+
 ## Response preferences
 
 1. **Full file output.** For this ReactJS project, always output the complete
