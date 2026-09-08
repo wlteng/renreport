@@ -364,6 +364,8 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "Leave the password blank to keep the current one.": "密码留空表示保持原密码不变。",
   "Enter a new username or a new password": "请填写新的用户名或新密码",
   "That username is already taken": "该用户名已被使用",
+  "Your time (7d)": "你的时长（7 天）",
+  "Reported time (7d)": "已提交时长（7 天）",
   "Editable for 1 hour after submission.": "提交后 1 小时内可编辑或删除。",
   "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.":
     "已超过 1 小时，不能再编辑或删除，请提交修正版本。",

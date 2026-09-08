@@ -56,7 +56,14 @@ import {
   projectSlug,
 } from "@/lib/projects";
 import { cn } from "@/lib/utils";
-import { creditedHours, currentReports } from "@/lib/workLogs";
+import {
+  addDuration,
+  creditedDuration,
+  currentReports,
+  EMPTY_DURATION,
+  formatDurationTotal,
+  type DurationTotal,
+} from "@/lib/workLogs";
 
 const MAX_AVATARS = 5;
 const PROJECT_PINS_STORAGE_KEY = "renreport.project-pins.v1";
@@ -154,12 +161,12 @@ function ProjectsPage() {
     [people.data],
   );
   const recentByProject = useMemo(() => {
-    const map = new Map<string, { entries: number; hours: number }>();
+    const map = new Map<string, { entries: number; duration: DurationTotal }>();
     for (const report of currentReports(recent.data ?? [])) {
       if (!report.project_id) continue;
-      const current = map.get(report.project_id) ?? { entries: 0, hours: 0 };
+      const current = map.get(report.project_id) ?? { entries: 0, duration: EMPTY_DURATION };
       current.entries += 1;
-      current.hours += creditedHours(report);
+      current.duration = addDuration(current.duration, creditedDuration(report));
       map.set(report.project_id, current);
     }
     return map;
@@ -277,7 +284,10 @@ function ProjectsPage() {
         {visibleProjects.map((project) => {
           const projectCategory = project.category ?? "mine";
           const CategoryIcon = PROJECT_CATEGORY_ICON[projectCategory] ?? FolderKanban;
-          const weekly = recentByProject.get(project.id) ?? { entries: 0, hours: 0 };
+          const weekly = recentByProject.get(project.id) ?? {
+            entries: 0,
+            duration: EMPTY_DURATION,
+          };
           const tasks = tasksByProject.get(project.id);
           const isPinned = pinnedProjectIdSet.has(project.id);
           const canEditThis = canManageAll || (canManageOwn && project.owner_id === user?.id);
@@ -422,7 +432,8 @@ function ProjectsPage() {
                 )}
                 <div className="shrink-0 text-right text-xs text-muted-foreground">
                   <p>
-                    {t("Last 7 days")}: {weekly.entries} {t("entries")} · {weekly.hours.toFixed(1)}h
+                    {t("Last 7 days")}: {weekly.entries} {t("entries")} ·{" "}
+                    {formatDurationTotal(weekly.duration)}
                   </p>
                   {tasks && tasks.total > 0 ? (
                     <p className="mt-0.5">

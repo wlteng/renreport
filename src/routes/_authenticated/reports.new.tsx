@@ -51,7 +51,7 @@ import {
   videoPosterCandidates,
   videoPosterPath,
 } from "@/lib/videos";
-import { HOURS_PER_DAY, participantsLabel } from "@/lib/workLogs";
+import { durationUnitOf, durationValueOf, HOURS_PER_DAY, participantsLabel } from "@/lib/workLogs";
 import {
   clearWorkLogDraft,
   loadWorkLogDraft,
@@ -301,11 +301,9 @@ function SubmitWork() {
     setWorkStatus(report.work_status);
     setTitle(report.title);
     setContent(report.content);
-    // Multi-day work reads back in days, the unit it was most likely entered in.
-    const recordedHours = Number(report.hours_spent);
-    const wholeDays = recordedHours >= HOURS_PER_DAY && recordedHours % HOURS_PER_DAY === 0;
-    setHours(String(wholeDays ? recordedHours / HOURS_PER_DAY : recordedHours));
-    setDurationUnit(wholeDays ? "days" : "hours");
+    // A log is edited in the unit it was entered in.
+    setHours(String(durationValueOf(report)));
+    setDurationUnit(durationUnitOf(report));
     setOutputQuantity(report.output_quantity === null ? "" : String(report.output_quantity));
     setOutputUnit(report.output_unit ?? "");
     setBlockers(report.blockers ?? "");
@@ -619,6 +617,10 @@ function SubmitWork() {
         const allVideos = mode === "correct" ? videoPaths : [...existingVideos, ...videoPaths];
         const record = {
           ...input,
+          // The entered duration is kept as typed: five days is five days, not
+          // 120 hours, because pay is counted per day for daily staff.
+          duration_value: Number(hours),
+          duration_unit: durationUnit,
           activity_detail: input.activity_detail ?? null,
           output_quantity: input.output_quantity ?? null,
           output_unit: input.output_unit ?? null,

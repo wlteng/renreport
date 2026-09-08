@@ -576,6 +576,8 @@ export type Database = {
           content: string
           created_at: string
           hours_spent: number
+          duration_value: number
+          duration_unit: string
           id: string
           image_urls: string[] | null
           links: string | null
@@ -600,6 +602,8 @@ export type Database = {
           content: string
           created_at?: string
           hours_spent?: number
+          duration_value?: number
+          duration_unit?: string
           id?: string
           image_urls?: string[] | null
           links?: string | null
@@ -624,6 +628,8 @@ export type Database = {
           content?: string
           created_at?: string
           hours_spent?: number
+          duration_value?: number
+          duration_unit?: string
           id?: string
           image_urls?: string[] | null
           links?: string | null

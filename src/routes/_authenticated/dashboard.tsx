@@ -32,7 +32,11 @@ import { isProjectWorkEnabled } from "@/lib/projects";
 import { isWithinEditWindow } from "@/lib/reportEdits";
 import { hasCapability, WORK_STATUS_LABEL } from "@/lib/roles";
 import {
-  creditedHours,
+  addDuration,
+  creditedDuration,
+  durationOf,
+  EMPTY_DURATION,
+  formatDurationTotal,
   currentReports,
   historyOf,
   isGroupReport,
@@ -290,9 +294,9 @@ function MyWorkSection({
       date,
       items,
       // A team log the author left themselves out of is listed but not counted.
-      hours: current
+      duration: current
         .filter((report) => report.report_date === date && reportCreditsUser(report, userId))
-        .reduce((sum, report) => sum + Number(report.hours_spent), 0),
+        .reduce((total, report) => addDuration(total, durationOf(report)), EMPTY_DURATION),
     }));
   }, [current, userId, visibleCount]);
   const selected = selectedId ? (all.find((report) => report.id === selectedId) ?? null) : null;
@@ -341,7 +345,7 @@ function MyWorkSection({
                 {dayLabel(day.date, language, t)}
               </h3>
               <span className="rounded-full bg-card/80 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-secondary-foreground">
-                {day.hours.toFixed(1)}h
+                {formatDurationTotal(day.duration)}
               </span>
             </div>
             <div className="divide-y divide-border">
@@ -504,9 +508,15 @@ function Dashboard() {
     [mine.data, user?.id],
   );
   const teamWeek = useMemo(() => currentReports(week.data ?? []), [week.data]);
-  const myHours = myWeek.reduce((sum, report) => sum + Number(report.hours_spent), 0);
-  // A team log credits its hours to every participant.
-  const teamHours = teamWeek.reduce((sum, report) => sum + creditedHours(report), 0);
+  const myTime = myWeek.reduce(
+    (total, report) => addDuration(total, durationOf(report)),
+    EMPTY_DURATION,
+  );
+  // A team log credits its time to every participant.
+  const teamTime = teamWeek.reduce(
+    (total, report) => addDuration(total, creditedDuration(report)),
+    EMPTY_DURATION,
+  );
   const activeProjects = (projects.data ?? []).filter(
     (project) => project.status === "active",
   ).length;
@@ -532,7 +542,7 @@ function Dashboard() {
       <TabsContent value="mine" className="mt-4">
         <StatRow>
           <Stat label="Your work logs (7d)" value={String(myWeek.length)} tone="bg-stat-gold" />
-          <Stat label="Your hours (7d)" value={myHours.toFixed(1)} tone="bg-stat-teal" />
+          <Stat label="Your time (7d)" value={formatDurationTotal(myTime)} tone="bg-stat-teal" />
           <Stat label="Active projects" value={String(activeProjects)} tone="bg-stat-violet" />
         </StatRow>
         <MyWorkSection
@@ -550,7 +560,11 @@ function Dashboard() {
             value={String(teamWeek.length)}
             tone="bg-stat-gold"
           />
-          <Stat label="Reported hours (7d)" value={teamHours.toFixed(1)} tone="bg-stat-teal" />
+          <Stat
+            label="Reported time (7d)"
+            value={formatDurationTotal(teamTime)}
+            tone="bg-stat-teal"
+          />
           <Stat
             label="Not reported today"
             value={String(missingToday)}

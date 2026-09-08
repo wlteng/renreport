@@ -106,7 +106,10 @@ import {
 import { hasCapability, WORK_STATUS_LABEL } from "@/lib/roles";
 import { staffLoginLabel } from "@/lib/staffAuth";
 import {
-  creditedHours,
+  addDuration,
+  creditedDuration,
+  EMPTY_DURATION,
+  formatDurationTotal,
   currentReports,
   historyOf,
   isGroupReport,
@@ -293,10 +296,13 @@ function ProjectDetailPage() {
       (item) => item.owner_id === selectedTeamMember.id || membershipProjectIds.has(item.id),
     );
   }, [memberships.data, projects.data, selectedTeamMember]);
-  const totalHours = useMemo(
+  const totalTime = useMemo(
     () =>
-      // A team log credits its hours to every participant.
-      currentReports(reports.data ?? []).reduce((sum, report) => sum + creditedHours(report), 0),
+      // A team log credits its time to every participant.
+      currentReports(reports.data ?? []).reduce(
+        (total, report) => addDuration(total, creditedDuration(report)),
+        EMPTY_DURATION,
+      ),
     [reports.data],
   );
   const selectedReport = useMemo(
@@ -1234,7 +1240,7 @@ function ProjectDetailPage() {
           <SummaryCard
             icon={Clock3}
             label="Work logs"
-            value={`${reports.data?.length ?? 0} · ${totalHours.toFixed(1)}h`}
+            value={`${reports.data?.length ?? 0} · ${formatDurationTotal(totalTime)}`}
             tone="bg-stat-violet"
           />
         ) : null}

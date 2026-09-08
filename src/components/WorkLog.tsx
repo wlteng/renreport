@@ -344,7 +344,7 @@ export function ReportBadges({ report }: { report: ReportRow }) {
         {t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type)}
         {report.activity_detail ? ` · ${report.activity_detail}` : ""}
       </Badge>
-      <Badge variant="outline">{formatWorkDuration(report.hours_spent)}</Badge>
+      <Badge variant="outline">{formatWorkDuration(report)}</Badge>
       {isGroupReport(report) ? (
         <Badge variant="outline" className="gap-1">
           <Users className="size-3" aria-hidden="true" />
@@ -453,15 +453,15 @@ export function WorkLogDialog({
                 <h3 className="logbook-label">
                   {t("Participants")} · {participants.length}
                 </h3>
-                <ul className="flex flex-wrap gap-1.5">
+                <ul className="flex flex-wrap gap-2">
                   {participants.map((person) => (
                     <li
                       key={person.id}
-                      className="flex items-center gap-1.5 rounded-full border border-border bg-muted/40 py-0.5 pl-0.5 pr-2.5 text-xs"
+                      className="flex items-center gap-2 rounded-full border border-border bg-muted/40 py-1 pl-1 pr-3 text-sm"
                     >
-                      <Avatar className="size-5">
+                      <Avatar className="size-10">
                         <AvatarImage src={person.avatar_url ?? undefined} alt="" />
-                        <AvatarFallback className="text-[9px] font-semibold">
+                        <AvatarFallback className="text-xs font-semibold">
                           {personInitials(person.full_name, person.email)}
                         </AvatarFallback>
                       </Avatar>
@@ -484,7 +484,7 @@ export function WorkLogDialog({
                       <span className="font-medium text-foreground">{previous.title}</span>
                       <span className="text-muted-foreground">
                         {" "}
-                        · {reportStamp(previous)} · {formatWorkDuration(previous.hours_spent)} ·{" "}
+                        · {reportStamp(previous)} · {formatWorkDuration(previous)} ·{" "}
                         {t("Superseded")}
                       </span>
                     </summary>

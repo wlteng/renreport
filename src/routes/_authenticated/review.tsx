@@ -38,7 +38,12 @@ import { useLanguage } from "@/lib/i18n";
 import { personInitials } from "@/lib/people";
 import { hasCapability, REPORT_TYPES, WORK_STATUS_LABEL } from "@/lib/roles";
 import {
-  creditedHours,
+  addDuration,
+  creditedDuration,
+  durationOf,
+  EMPTY_DURATION,
+  formatDurationTotal,
+  type DurationTotal,
   currentReports,
   historyOf,
   isGroupReport,
@@ -209,19 +214,24 @@ function Review() {
 
   // A team log counts once for every person credited on it.
   const byPerson = useMemo(() => {
-    const map = new Map<string, { entries: number; hours: number }>();
+    const map = new Map<string, { entries: number; duration: DurationTotal }>();
     for (const r of current) {
       for (const id of reportParticipants(r)) {
-        const cur = map.get(id) ?? { entries: 0, hours: 0 };
+        const cur = map.get(id) ?? { entries: 0, duration: EMPTY_DURATION };
         cur.entries += 1;
-        cur.hours += Number(r.hours_spent);
+        cur.duration = addDuration(cur.duration, durationOf(r));
         map.set(id, cur);
       }
     }
-    return [...map.entries()].sort((a, b) => b[1].hours - a[1].hours);
+    // Days weigh more than hours, so a day counts as a working day of hours.
+    const weight = (value: DurationTotal) => value.days * 8 + value.hours;
+    return [...map.entries()].sort((a, b) => weight(b[1].duration) - weight(a[1].duration));
   }, [current]);
 
-  const totalHours = current.reduce((s, r) => s + creditedHours(r), 0);
+  const totalTime = current.reduce(
+    (total, r) => addDuration(total, creditedDuration(r)),
+    EMPTY_DURATION,
+  );
 
   if (loading) {
     return <p className="text-sm text-muted-foreground">{t("Checking staff activity access…")}</p>;
@@ -362,8 +372,8 @@ function Review() {
           <p className="mt-2 text-xl font-semibold sm:text-2xl">{current.length}</p>
         </div>
         <div className="logbook-card min-w-[50%] snap-start border-transparent bg-stat-teal p-4 shadow-none sm:min-w-0 sm:p-5">
-          <p className="logbook-label">{t("Hours")}</p>
-          <p className="mt-2 text-xl font-semibold sm:text-2xl">{totalHours.toFixed(1)}</p>
+          <p className="logbook-label">{t("Time")}</p>
+          <p className="mt-2 text-xl font-semibold sm:text-2xl">{formatDurationTotal(totalTime)}</p>
         </div>
         <div className="logbook-card min-w-[50%] snap-start border-transparent bg-stat-copper p-4 shadow-none sm:min-w-0 sm:p-5">
           <p className="logbook-label">{t("People reporting")}</p>
@@ -387,7 +397,7 @@ function Review() {
                   </Avatar>
                   <span className="min-w-0 flex-1 truncate">{displayName(person, t)}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {s.entries} {t("entries")} · {s.hours.toFixed(1)}h
+                    {s.entries} {t("entries")} · {formatDurationTotal(s.duration)}
                   </span>
                 </div>
               );

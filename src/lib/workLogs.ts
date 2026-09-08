@@ -10,20 +10,61 @@ export const STATUS_TONE: Record<string, string> = {
   blocked: "border-transparent bg-stat-copper text-accent-foreground",
 };
 
-/** Hours in a day, used to read a multi-day work log back as days. */
+/** Hours in a day, used when a duration has to be normalized to hours. */
 export const HOURS_PER_DAY = 24;
 
+export type DurationUnit = "days" | "hours" | "mins";
+
+/** The duration fields of a work log, as they were entered. */
+type TimedReport = Pick<ReportRow, "hours_spent" | "duration_value" | "duration_unit">;
+
+export function durationUnitOf(report: TimedReport): DurationUnit {
+  return report.duration_unit === "days" || report.duration_unit === "mins"
+    ? report.duration_unit
+    : "hours";
+}
+
+/** The number as it was typed, falling back to the hours of an older log. */
+export function durationValueOf(report: TimedReport) {
+  const value = Number(report.duration_value);
+  return Number.isFinite(value) && value > 0 ? value : Number(report.hours_spent);
+}
+
 /**
- * Duration of a work log for display. Site visits can run for several days, so
- * anything from a full day up is shown in days with the hours kept alongside.
+ * Duration of a work log in the unit it was entered in. A five day site visit
+ * reads as five days, never as 120 hours, because pay is counted per day.
  */
-export function formatWorkDuration(hoursSpent: number | string) {
-  const hours = Number(hoursSpent);
-  if (!Number.isFinite(hours)) return "0h";
-  if (hours < HOURS_PER_DAY) return `${hours.toFixed(1)}h`;
-  const days = hours / HOURS_PER_DAY;
-  const dayLabel = Number.isInteger(days) ? String(days) : days.toFixed(1);
-  return `${dayLabel}d · ${hours.toFixed(1)}h`;
+export function formatWorkDuration(report: TimedReport) {
+  const value = durationValueOf(report);
+  const rounded = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  const unit = durationUnitOf(report);
+  return unit === "days" ? `${rounded}d` : unit === "mins" ? `${rounded}m` : `${rounded}h`;
+}
+
+/** Days and hours of a work log kept apart, since the two are never added. */
+export type DurationTotal = { days: number; hours: number };
+
+export function durationOf(report: TimedReport): DurationTotal {
+  const unit = durationUnitOf(report);
+  const value = durationValueOf(report);
+  if (unit === "days") return { days: value, hours: 0 };
+  return { days: 0, hours: unit === "mins" ? value / 60 : value };
+}
+
+export function addDuration(total: DurationTotal, next: DurationTotal): DurationTotal {
+  return { days: total.days + next.days, hours: total.hours + next.hours };
+}
+
+export const EMPTY_DURATION: DurationTotal = { days: 0, hours: 0 };
+
+/** A total as "3d · 12.5h", dropping whichever half is zero. */
+export function formatDurationTotal(total: DurationTotal) {
+  const parts: string[] = [];
+  if (total.days > 0) {
+    parts.push(`${Number.isInteger(total.days) ? total.days : total.days.toFixed(1)}d`);
+  }
+  if (total.hours > 0 || parts.length === 0) parts.push(`${total.hours.toFixed(1)}h`);
+  return parts.join(" · ");
 }
 
 /** The directory fields needed to show a person on a work log. */
@@ -51,9 +92,11 @@ export function reportCreditsUser(report: CreditedReport, userId: string | undef
   return !!userId && reportParticipants(report).includes(userId);
 }
 
-/** Hours a work log adds to a team total: every participant is credited in full. */
-export function creditedHours(report: CreditedReport & Pick<ReportRow, "hours_spent">) {
-  return Number(report.hours_spent) * reportParticipants(report).length;
+/** Time a work log adds to a team total: every participant is credited in full. */
+export function creditedDuration(report: CreditedReport & TimedReport): DurationTotal {
+  const people = reportParticipants(report).length;
+  const own = durationOf(report);
+  return { days: own.days * people, hours: own.hours * people };
 }
 
 /** Directory entries for everyone credited on a work log; unknown ids still count. */
@@ -110,7 +153,7 @@ export function reportMeta(
     t(REPORT_TYPE_LABEL[report.report_type] ?? report.report_type) +
       (report.activity_detail ? ` · ${report.activity_detail}` : ""),
     projectName,
-    `${Number(report.hours_spent).toFixed(1)}h`,
+    formatWorkDuration(report),
   ].join(" · ");
 }
 
