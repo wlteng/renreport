@@ -8,7 +8,7 @@ import {
   MediaLightbox,
   WorkLogDialog,
   WorkLogThumbnail,
-  type LightboxMedia,
+  type LightboxGallery,
 } from "@/components/WorkLog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -132,7 +132,7 @@ function WorkLogRow({
   report: ReportRow;
   projectName: string;
   onOpen: () => void;
-  onOpenMedia: (media: LightboxMedia) => void;
+  onOpenMedia: (gallery: LightboxGallery) => void;
 }) {
   const { t } = useLanguage();
   return (
@@ -278,7 +278,7 @@ function MyWorkSection({
   const [visibleCount, setVisibleCount] = useState(RECENT_WORK_PAGE_SIZE);
   const [showExpandOptions, setShowExpandOptions] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState<LightboxMedia | null>(null);
+  const [lightbox, setLightbox] = useState<LightboxGallery | null>(null);
 
   const all = useMemo(() => reports.data ?? [], [reports.data]);
   const current = useMemo(() => currentReports(all), [all]);
@@ -468,7 +468,7 @@ function MyWorkSection({
           ) : null
         }
       />
-      <MediaLightbox media={lightbox} onClose={() => setLightbox(null)} />
+      <MediaLightbox gallery={lightbox} onClose={() => setLightbox(null)} />
     </section>
   );
 }

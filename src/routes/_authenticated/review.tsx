@@ -9,7 +9,7 @@ import {
   ParticipantAvatars,
   WorkLogDialog,
   WorkLogThumbnail,
-  type LightboxMedia,
+  type LightboxGallery,
 } from "@/components/WorkLog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -114,7 +114,7 @@ function FeedRow({
   participants: WorkLogPerson[] | undefined;
   projectName: string;
   onOpen: () => void;
-  onOpenMedia: (media: LightboxMedia) => void;
+  onOpenMedia: (gallery: LightboxGallery) => void;
 }) {
   const { t } = useLanguage();
   return (
@@ -193,7 +193,7 @@ function Review() {
 
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState<LightboxMedia | null>(null);
+  const [lightbox, setLightbox] = useState<LightboxGallery | null>(null);
 
   const reports = useVisibleReports({ from, to, userId, projectId, type });
   const all = useMemo(() => reports.data ?? [], [reports.data]);
@@ -452,7 +452,7 @@ function Review() {
         onClose={() => setSelectedId(null)}
         onOpenMedia={setLightbox}
       />
-      <MediaLightbox media={lightbox} onClose={() => setLightbox(null)} />
+      <MediaLightbox gallery={lightbox} onClose={() => setLightbox(null)} />
     </>
   );
 }

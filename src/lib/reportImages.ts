@@ -16,3 +16,17 @@ export async function removeReportImages(paths: string[]) {
   const { error } = await supabase.storage.from(REPORT_IMAGE_BUCKET).remove(storedPaths);
   if (error) throw error;
 }
+
+/** A photo or video of a work log, ready for the full-screen viewer. */
+export type LightboxMedia = { kind: "image" | "video"; src: string; path: string };
+
+/** The photos and videos of a work log, in the order they are shown. */
+export function galleryMedia(
+  images: string[] | null | undefined,
+  videos: string[] | null | undefined,
+): LightboxMedia[] {
+  return [
+    ...(images ?? []).map((path) => ({ kind: "image" as const, src: reportImageUrl(path), path })),
+    ...(videos ?? []).map((path) => ({ kind: "video" as const, src: reportImageUrl(path), path })),
+  ];
+}

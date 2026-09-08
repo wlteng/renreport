@@ -32,9 +32,8 @@ import {
   MediaLightbox,
   ParticipantAvatars,
   WorkLogDialog,
-  WorkLogImages,
-  WorkLogVideos,
-  type LightboxMedia,
+  WorkLogMedia,
+  type LightboxGallery,
 } from "@/components/WorkLog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -211,7 +210,7 @@ function ProjectDetailPage() {
   const queryClient = useQueryClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState<LightboxMedia | null>(null);
+  const [lightbox, setLightbox] = useState<LightboxGallery | null>(null);
   const [taskOpen, setTaskOpen] = useState(false);
   const [taskDescription, setTaskDescription] = useState("");
   const [taskAssignee, setTaskAssignee] = useState("");
@@ -792,7 +791,7 @@ function ProjectDetailPage() {
         onClose={() => setSelectedReportId(null)}
         onOpenMedia={setLightbox}
       />
-      <MediaLightbox media={lightbox} onClose={() => setLightbox(null)} />
+      <MediaLightbox gallery={lightbox} onClose={() => setLightbox(null)} />
 
       <ProjectEditorDialog
         open={settingsOpen && canManageProject}
@@ -1708,13 +1707,9 @@ function ProjectDetailPage() {
                           {report.content}
                         </p>
                         {report.image_urls?.length || report.video_urls?.length ? (
-                          <div className="mt-2 space-y-2">
-                            <WorkLogImages
+                          <div className="mt-2">
+                            <WorkLogMedia
                               images={report.image_urls}
-                              compact
-                              onOpen={setLightbox}
-                            />
-                            <WorkLogVideos
                               videos={report.video_urls}
                               compact
                               onOpen={setLightbox}

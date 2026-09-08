@@ -1,5 +1,5 @@
-import { Film, Minus, Play, Plus, RotateCcw, Users } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, Film, Minus, Play, Plus, RotateCcw, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,7 @@ import {
 import type { ReportRow } from "@/hooks/useData";
 import { useLanguage } from "@/lib/i18n";
 import { personDisplayName, personInitials } from "@/lib/people";
-import { reportImageUrl } from "@/lib/reportImages";
+import { galleryMedia, reportImageUrl, type LightboxMedia } from "@/lib/reportImages";
 import { REPORT_TYPE_LABEL, WORK_STATUS_LABEL } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { videoPosterCandidates } from "@/lib/videos";
@@ -31,65 +31,150 @@ import {
 
 const ZOOM_LEVELS = [1, 1.5, 2, 3];
 
-/** A photo or video opened full screen. */
-export type LightboxMedia = { kind: "image" | "video"; src: string };
+/** Everything attached to one work log, opened at the item that was clicked. */
+export type LightboxGallery = { items: LightboxMedia[]; index: number };
 
-/** Minimal full-screen viewer: photos zoom in and out, videos play with the native controls. */
+/** How far a touch has to travel before it counts as a swipe. */
+const SWIPE_THRESHOLD = 48;
+
+/**
+ * Full-screen viewer for the attachments of one work log. Photos zoom in and
+ * out, videos play with the native controls, and the whole set can be paged
+ * through with the arrows, the arrow keys, or a swipe.
+ */
 export function MediaLightbox({
-  media,
+  gallery,
   onClose,
 }: {
-  media: LightboxMedia | null;
+  gallery: LightboxGallery | null;
   onClose: () => void;
 }) {
   const { t } = useLanguage();
+  const [index, setIndex] = useState(gallery?.index ?? 0);
   const [zoom, setZoom] = useState(1);
-  useEffect(() => setZoom(1), [media]);
-  const step = (direction: 1 | -1) =>
+  const touchStart = useRef<number | null>(null);
+  const items = useMemo(() => gallery?.items ?? [], [gallery]);
+  const media = items[Math.min(index, Math.max(items.length - 1, 0))] ?? null;
+  const count = items.length;
+
+  useEffect(() => {
+    if (gallery) setIndex(gallery.index);
+  }, [gallery]);
+  useEffect(() => setZoom(1), [index, gallery]);
+
+  const step = useCallback(
+    (direction: 1 | -1) => {
+      if (count < 2) return;
+      setIndex((current) => (current + direction + count) % count);
+    },
+    [count],
+  );
+
+  useEffect(() => {
+    if (!gallery) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        step(1);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        step(-1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [gallery, step]);
+
+  const zoomStep = (direction: 1 | -1) =>
     setZoom((current) => {
-      const index = ZOOM_LEVELS.indexOf(current);
-      return ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, Math.max(0, index + direction))] ?? 1;
+      const position = ZOOM_LEVELS.indexOf(current);
+      return ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, Math.max(0, position + direction))] ?? 1;
     });
   const isVideo = media?.kind === "video";
+
+  const arrow = (direction: 1 | -1) => (
+    <Button
+      type="button"
+      size="icon"
+      variant="ghost"
+      aria-label={t(direction === 1 ? "Next" : "Previous")}
+      onClick={() => step(direction)}
+      className={cn(
+        "absolute top-1/2 z-10 size-11 -translate-y-1/2 rounded-full bg-black/60 text-white hover:bg-black/75 hover:text-white",
+        direction === 1 ? "right-3" : "left-3",
+      )}
+    >
+      {direction === 1 ? <ChevronRight /> : <ChevronLeft />}
+    </Button>
+  );
+
   return (
     <Dialog
-      open={media !== null}
+      open={gallery !== null}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
     >
-      <DialogContent className="block h-[100dvh] max-h-none w-screen max-w-none overflow-hidden rounded-none border-0 bg-black/95 p-0 shadow-none sm:p-0 [&>button]:right-3 [&>button]:top-3 [&>button]:z-10 [&>button]:rounded-full [&>button]:bg-black/60 [&>button]:p-2 [&>button]:text-white [&>button]:opacity-100">
+      <DialogContent className="block h-[100dvh] max-h-none w-screen max-w-none overflow-hidden rounded-none border-0 bg-black/95 p-0 shadow-none sm:p-0 [&>button]:right-3 [&>button]:top-3 [&>button]:z-20 [&>button]:rounded-full [&>button]:bg-black/60 [&>button]:p-2 [&>button]:text-white [&>button]:opacity-100">
         <DialogTitle className="sr-only">{t(isVideo ? "Video" : "Photo")}</DialogTitle>
         <DialogDescription className="sr-only">
           {t(isVideo ? "Play video" : "Zoom in")}
         </DialogDescription>
-        {media && isVideo ? (
-          <div className="grid h-full w-full place-items-center">
-            {/* The click that opened the viewer counts as the gesture autoplay needs. */}
-            <video
-              src={media.src}
-              controls
-              autoPlay
-              playsInline
-              className="max-h-[100dvh] max-w-[100vw]"
-            />
-          </div>
-        ) : media ? (
-          <div className="h-full w-full overflow-auto">
-            <div className="flex h-max min-h-full w-max min-w-full items-center justify-center">
-              <img
+        <div
+          className="h-full w-full"
+          // Swiping pages through the set; zoomed photos are panned instead.
+          onTouchStart={(event) => {
+            touchStart.current = zoom === 1 ? (event.touches[0]?.clientX ?? null) : null;
+          }}
+          onTouchEnd={(event) => {
+            const start = touchStart.current;
+            touchStart.current = null;
+            const end = event.changedTouches[0]?.clientX;
+            if (start === null || end === undefined) return;
+            const travelled = end - start;
+            if (Math.abs(travelled) > SWIPE_THRESHOLD) step(travelled < 0 ? 1 : -1);
+          }}
+        >
+          {media && isVideo ? (
+            <div className="grid h-full w-full place-items-center">
+              {/* The click that opened the viewer counts as the gesture autoplay needs. */}
+              <video
+                key={media.src}
                 src={media.src}
-                alt=""
-                draggable={false}
-                onDoubleClick={() => setZoom((current) => (current === 1 ? 2 : 1))}
-                className={cn(
-                  "select-none",
-                  zoom === 1 ? "max-h-[100dvh] max-w-[100vw] object-contain" : "h-auto max-w-none",
-                )}
-                style={zoom === 1 ? undefined : { width: `${zoom * 100}vw` }}
+                controls
+                autoPlay
+                playsInline
+                className="max-h-[100dvh] max-w-[100vw]"
               />
             </div>
-          </div>
+          ) : media ? (
+            <div className="h-full w-full overflow-auto">
+              <div className="flex h-max min-h-full w-max min-w-full items-center justify-center">
+                <img
+                  src={media.src}
+                  alt=""
+                  draggable={false}
+                  onDoubleClick={() => setZoom((current) => (current === 1 ? 2 : 1))}
+                  className={cn(
+                    "select-none",
+                    zoom === 1
+                      ? "max-h-[100dvh] max-w-[100vw] object-contain"
+                      : "h-auto max-w-none",
+                  )}
+                  style={zoom === 1 ? undefined : { width: `${zoom * 100}vw` }}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+        {count > 1 ? (
+          <>
+            {arrow(-1)}
+            {arrow(1)}
+            <span className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs font-medium tabular-nums text-white">
+              {index + 1} / {count}
+            </span>
+          </>
         ) : null}
         {media && !isVideo ? (
           <div className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+16px)] left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/60 p-1">
@@ -100,7 +185,7 @@ export function MediaLightbox({
               className="rounded-full text-white hover:bg-white/15 hover:text-white"
               aria-label={t("Zoom out")}
               disabled={zoom === ZOOM_LEVELS[0]}
-              onClick={() => step(-1)}
+              onClick={() => zoomStep(-1)}
             >
               <Minus />
             </Button>
@@ -114,7 +199,7 @@ export function MediaLightbox({
               className="rounded-full text-white hover:bg-white/15 hover:text-white"
               aria-label={t("Zoom in")}
               disabled={zoom === ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
-              onClick={() => step(1)}
+              onClick={() => zoomStep(1)}
             >
               <Plus />
             </Button>
@@ -133,59 +218,6 @@ export function MediaLightbox({
         ) : null}
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * Photos of a work log. A single photo is shown directly; several become
- * thumbnails. Every photo opens the viewer.
- */
-export function WorkLogImages({
-  images,
-  compact = false,
-  onOpen,
-}: {
-  images: string[] | null | undefined;
-  compact?: boolean;
-  onOpen: (media: LightboxMedia) => void;
-}) {
-  const { t } = useLanguage();
-  if (!images?.length) return null;
-  const open = (image: string) => (event: { stopPropagation: () => void }) => {
-    event.stopPropagation();
-    onOpen({ kind: "image", src: reportImageUrl(image) });
-  };
-  if (images.length === 1) {
-    const image = images[0]!;
-    return (
-      <button
-        type="button"
-        onClick={open(image)}
-        aria-label={t("Photo")}
-        className="block w-full overflow-hidden rounded-lg"
-      >
-        <img
-          src={reportImageUrl(image)}
-          alt=""
-          className={cn("block h-auto object-contain", compact ? "max-h-56 max-w-full" : "w-full")}
-        />
-      </button>
-    );
-  }
-  return (
-    <div className="flex flex-wrap gap-2">
-      {images.map((image) => (
-        <button
-          key={image}
-          type="button"
-          onClick={open(image)}
-          aria-label={t("Photo")}
-          className={cn("shrink-0 overflow-hidden rounded-md", compact ? "size-16" : "size-24")}
-        >
-          <img src={reportImageUrl(image)} alt="" className="size-full object-cover" />
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -220,39 +252,76 @@ function PlayOverlay() {
   );
 }
 
-/** Videos of a work log as poster tiles; each opens the player. */
-export function WorkLogVideos({
+/**
+ * Photos and videos of a work log in one grid, in that order. A lone photo is
+ * shown in full; anything more becomes tiles. Clicking any of them opens the
+ * viewer at that item, with the rest of the set beside it.
+ */
+export function WorkLogMedia({
+  images,
   videos,
   compact = false,
   onOpen,
 }: {
-  videos: string[] | null | undefined;
+  images: string[] | null | undefined;
+  videos?: string[] | null | undefined;
   compact?: boolean;
-  onOpen: (media: LightboxMedia) => void;
+  onOpen: (gallery: LightboxGallery) => void;
 }) {
   const { t } = useLanguage();
-  if (!videos?.length) return null;
-  const single = videos.length === 1 && !compact;
+  const items = galleryMedia(images, videos);
+  if (items.length === 0) return null;
+  const open = (index: number) => (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    onOpen({ items, index });
+  };
+  const only = items[0]!;
+  if (items.length === 1 && only.kind === "image") {
+    return (
+      <button
+        type="button"
+        onClick={open(0)}
+        aria-label={t("Photo")}
+        className="block w-full overflow-hidden rounded-lg"
+      >
+        <img
+          src={only.src}
+          alt=""
+          className={cn("block h-auto object-contain", compact ? "max-h-56 max-w-full" : "w-full")}
+        />
+      </button>
+    );
+  }
+  const single = items.length === 1 && !compact;
   return (
     <div className="flex flex-wrap gap-2">
-      {videos.map((video) => (
-        <button
-          key={video}
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpen({ kind: "video", src: reportImageUrl(video) });
-          }}
-          aria-label={t("Play video")}
-          className={cn(
-            "relative shrink-0 overflow-hidden rounded-md bg-black",
-            single ? "aspect-video w-full max-w-md" : compact ? "size-16" : "size-24",
-          )}
-        >
-          <WorkLogVideoPoster path={video} className="size-full object-cover" />
-          <PlayOverlay />
-        </button>
-      ))}
+      {items.map((item, index) =>
+        item.kind === "image" ? (
+          <button
+            key={item.src}
+            type="button"
+            onClick={open(index)}
+            aria-label={t("Photo")}
+            className={cn("shrink-0 overflow-hidden rounded-md", compact ? "size-16" : "size-24")}
+          >
+            <img src={item.src} alt="" className="size-full object-cover" />
+          </button>
+        ) : (
+          <button
+            key={item.src}
+            type="button"
+            onClick={open(index)}
+            aria-label={t("Play video")}
+            className={cn(
+              "relative shrink-0 overflow-hidden rounded-md bg-black",
+              single ? "aspect-video w-full max-w-md" : compact ? "size-16" : "size-24",
+            )}
+          >
+            <WorkLogVideoPoster path={item.path} className="size-full object-cover" />
+            <PlayOverlay />
+          </button>
+        ),
+      )}
     </div>
   );
 }
@@ -265,22 +334,20 @@ export function WorkLogThumbnail({
 }: {
   images: string[] | null | undefined;
   videos?: string[] | null | undefined;
-  onOpen: (media: LightboxMedia) => void;
+  onOpen: (gallery: LightboxGallery) => void;
 }) {
   const { t } = useLanguage();
   const image = images?.[0];
   const video = videos?.[0];
-  const total = (images?.length ?? 0) + (videos?.length ?? 0);
+  const items = galleryMedia(images, videos);
+  const total = items.length;
   if (!image && !video) return null;
-  const media: LightboxMedia = image
-    ? { kind: "image", src: reportImageUrl(image) }
-    : { kind: "video", src: reportImageUrl(video!) };
   return (
     <button
       type="button"
       onClick={(event) => {
         event.stopPropagation();
-        onOpen(media);
+        onOpen({ items, index: 0 });
       }}
       aria-label={t(image ? "Photo" : "Play video")}
       className="relative size-14 shrink-0 overflow-hidden rounded-lg border border-border bg-muted transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-16"
@@ -362,7 +429,7 @@ export function ReportBody({
 }: {
   report: ReportRow;
   compact?: boolean;
-  onOpenMedia: (media: LightboxMedia) => void;
+  onOpenMedia: (gallery: LightboxGallery) => void;
 }) {
   const { t } = useLanguage();
   return (
@@ -388,8 +455,12 @@ export function ReportBody({
       {report.links ? (
         <p className="break-all text-xs text-muted-foreground">{report.links}</p>
       ) : null}
-      <WorkLogImages images={report.image_urls} compact={compact} onOpen={onOpenMedia} />
-      <WorkLogVideos videos={report.video_urls} compact={compact} onOpen={onOpenMedia} />
+      <WorkLogMedia
+        images={report.image_urls}
+        videos={report.video_urls}
+        compact={compact}
+        onOpen={onOpenMedia}
+      />
     </div>
   );
 }
@@ -417,7 +488,7 @@ export function WorkLogDialog({
   actions?: ReactNode;
   showCloseAction?: boolean;
   onClose: () => void;
-  onOpenMedia: (media: LightboxMedia) => void;
+  onOpenMedia: (gallery: LightboxGallery) => void;
 }) {
   const { t } = useLanguage();
   const contentRef = useRef<HTMLDivElement>(null);

@@ -366,6 +366,8 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   "That username is already taken": "该用户名已被使用",
   "Your time (7d)": "你的时长（7 天）",
   "Reported time (7d)": "已提交时长（7 天）",
+  Next: "下一个",
+  Previous: "上一个",
   "Editable for 1 hour after submission.": "提交后 1 小时内可编辑或删除。",
   "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.":
     "已超过 1 小时，不能再编辑或删除，请提交修正版本。",
