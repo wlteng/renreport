@@ -52,6 +52,12 @@ import {
   videoPosterPath,
 } from "@/lib/videos";
 import { participantsLabel } from "@/lib/workLogs";
+import {
+  clearWorkLogDraft,
+  loadWorkLogDraft,
+  saveWorkLogDraft,
+  type WorkLogDraft,
+} from "@/lib/workLogDraft";
 
 type ActivityExtraField = "detail" | "output" | "blockers" | "links";
 
@@ -199,6 +205,9 @@ function SubmitWork() {
   const [staffSearch, setStaffSearch] = useState("");
   const previewUrls = useRef(new Set<string>());
   const prefilled = useRef(false);
+  // A new work log keeps a local draft until it is submitted.
+  const draftRestored = useRef(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const activityDetailPlaceholder = ACTIVITY_DETAIL_PLACEHOLDER[type];
   const activityExtraFields = ACTIVITY_EXTRA_FIELDS[type] ?? [];
   const activityLabel = REPORT_TYPES.find((item) => item.value === type)?.label ?? type;
@@ -303,6 +312,102 @@ function SubmitWork() {
     setIncludeMe(listed.length === 0 || listed.includes(report.user_id));
     setParticipantIds(listed.filter((id) => id !== report.user_id));
   }, [mode, source.data]);
+
+  // A draft left behind by an unsubmitted work log is restored once, on the empty form.
+  useEffect(() => {
+    if (mode !== "new" || !userId || draftRestored.current) return;
+    draftRestored.current = true;
+    const draft = loadWorkLogDraft(userId);
+    if (!draft) return;
+    if (draft.date) setDate(draft.date);
+    if (draft.time) setTime(draft.time);
+    setProjectId(draft.projectId);
+    if (REPORT_TYPES.some((item) => item.value === draft.type)) setType(draft.type as ReportType);
+    setActivityDetail(draft.activityDetail);
+    if (draft.workStatus) setWorkStatus(draft.workStatus);
+    setTitle(draft.title);
+    setContent(draft.content);
+    setHours(draft.hours);
+    if (
+      draft.durationUnit === "days" ||
+      draft.durationUnit === "hours" ||
+      draft.durationUnit === "mins"
+    ) {
+      setDurationUnit(draft.durationUnit);
+    }
+    setOutputQuantity(draft.outputQuantity);
+    setOutputUnit(draft.outputUnit);
+    setBlockers(draft.blockers);
+    setLinks(draft.links);
+    setParticipantIds(draft.participantIds);
+    setIncludeMe(draft.includeMe);
+    setDraftSavedAt(draft.savedAt);
+  }, [mode, userId]);
+
+  // Everything typed is kept locally so a reload or a closed tab loses nothing.
+  useEffect(() => {
+    if (mode !== "new" || !userId || !draftRestored.current) return;
+    const draft: WorkLogDraft = {
+      date,
+      time,
+      projectId,
+      type,
+      activityDetail,
+      workStatus,
+      title,
+      content,
+      hours,
+      durationUnit,
+      outputQuantity,
+      outputUnit,
+      blockers,
+      links,
+      participantIds,
+      includeMe,
+    };
+    const timer = setTimeout(() => saveWorkLogDraft(userId, draft), 400);
+    return () => clearTimeout(timer);
+  }, [
+    activityDetail,
+    blockers,
+    content,
+    date,
+    durationUnit,
+    hours,
+    includeMe,
+    links,
+    mode,
+    outputQuantity,
+    outputUnit,
+    participantIds,
+    projectId,
+    time,
+    title,
+    type,
+    userId,
+    workStatus,
+  ]);
+
+  function discardDraft() {
+    if (userId) clearWorkLogDraft(userId);
+    setDraftSavedAt(null);
+    setDate(todayForDateInput());
+    setTime(nowForTimeInput());
+    setProjectId("");
+    setType("normal_activity");
+    setActivityDetail("");
+    setWorkStatus("completed");
+    setTitle("");
+    setContent("");
+    setHours("");
+    setDurationUnit("hours");
+    setOutputQuantity("");
+    setOutputUnit("");
+    setBlockers("");
+    setLinks("");
+    setParticipantIds([]);
+    setIncludeMe(true);
+  }
 
   function trackPreview(url: string) {
     previewUrls.current.add(url);
@@ -551,6 +656,9 @@ function SubmitWork() {
       }
     },
     onSuccess: () => {
+      // The work log is stored now, so the local draft must not reappear on the next form.
+      if (userId) clearWorkLogDraft(userId);
+      setDraftSavedAt(null);
       toast.success(
         mode === "edit"
           ? t("Work log updated")
@@ -735,6 +843,21 @@ function SubmitWork() {
             {source.data.report_time ? ` ${source.data.report_time.slice(0, 5)}` : ""} ·{" "}
             {t("Editable for 1 hour after submission.")}
           </p>
+        </div>
+      ) : mode === "new" && draftSavedAt ? (
+        <div
+          role="status"
+          className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-stat-gold/60 px-4 py-3"
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{t("Unsubmitted draft restored")}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {t("Saved on this device and cleared once you submit.")}
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={discardDraft}>
+            {t("Discard draft")}
+          </Button>
         </div>
       ) : null}
       <form

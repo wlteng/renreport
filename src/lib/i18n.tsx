@@ -345,6 +345,9 @@ const ZH_TRANSLATIONS: Record<string, string> = {
   History: "历史版本",
   Superseded: "已被修正",
   "Previous version": "之前的版本",
+  "Unsubmitted draft restored": "已恢复未提交的草稿",
+  "Saved on this device and cleared once you submit.": "草稿保存在本机，提交后会自动清除。",
+  "Discard draft": "放弃草稿",
   "Editable for 1 hour after submission.": "提交后 1 小时内可编辑或删除。",
   "More than 1 hour has passed, so this log can no longer be edited or deleted. Submit a correction instead.":
     "已超过 1 小时，不能再编辑或删除，请提交修正版本。",
