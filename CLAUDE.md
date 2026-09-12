@@ -14,6 +14,12 @@ published history on the connected branch).
   `supabase/migrations/`, run the same SQL against the connected Supabase
   database (Lovable SQL editor / `query_database` on the Renreport project),
   then verify the result. A migration file alone is not a deployed change.
+  Also record the version in `supabase_migrations.schema_migrations` so the
+  migration is not applied twice, and use the same numeric prefix as the file.
+- **Never spend Lovable credits.** Do not send work to the Lovable agent
+  (`send_message`) for this project. Run SQL yourself through `query_database`
+  or hand it over for the Lovable SQL editor. The agent costs workspace credits
+  and records migrations under its own timestamp.
 
 ## Response preferences
 
