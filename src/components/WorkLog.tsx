@@ -465,6 +465,31 @@ export function ReportBody({
   );
 }
 
+function ParticipantChip({ person, fallback }: { person: WorkLogPerson; fallback: string }) {
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const avatarUrl = person.avatar_url?.trim();
+  const showAvatar = Boolean(avatarUrl) && !avatarFailed;
+
+  return (
+    <li
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border border-border bg-muted/40 py-0.5 text-xs",
+        showAvatar ? "pl-0.5 pr-2.5" : "px-2.5",
+      )}
+    >
+      {showAvatar ? (
+        <img
+          src={avatarUrl}
+          alt=""
+          className="size-5 shrink-0 rounded-full object-cover"
+          onError={() => setAvatarFailed(true)}
+        />
+      ) : null}
+      <span>{personDisplayName(person, fallback)}</span>
+    </li>
+  );
+}
+
 /** Details of one work log with its earlier versions, plus optional actions. */
 export function WorkLogDialog({
   report,
@@ -526,18 +551,11 @@ export function WorkLogDialog({
                 </h3>
                 <ul className="flex flex-wrap gap-2">
                   {participants.map((person) => (
-                    <li
-                      key={person.id}
-                      className="flex items-center gap-2 rounded-full border border-border bg-muted/40 py-1 pl-1 pr-3 text-sm"
-                    >
-                      <Avatar className="size-10">
-                        <AvatarImage src={person.avatar_url ?? undefined} alt="" />
-                        <AvatarFallback className="text-xs font-semibold">
-                          {personInitials(person.full_name, person.email)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span>{personDisplayName(person, t("Unknown user"))}</span>
-                    </li>
+                    <ParticipantChip
+                      key={`${person.id}:${person.avatar_url ?? ""}`}
+                      person={person}
+                      fallback={t("Unknown user")}
+                    />
                   ))}
                 </ul>
               </section>

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Building2 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Building2, ImagePlus } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { CompensationRow, Department, PersonRow } from "@/hooks/useData";
 import { supabase } from "@/integrations/supabase/client";
+import { AVATAR_ACCEPT, AVATAR_BUCKET, isAllowedAvatar, uploadAvatarFile } from "@/lib/avatars";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { useLanguage } from "@/lib/i18n";
 import { personDisplayName, personInitials } from "@/lib/people";
@@ -189,6 +190,11 @@ function PersonDialog({
   const [hours, setHours] = useState(String(compensation?.standard_hours ?? 160));
   const [username, setUsername] = useState(person?.email ? staffLoginLabel(person.email) : "");
   const [password, setPassword] = useState("");
+  const [avatarSelection, setAvatarSelection] = useState<{
+    file: File;
+    previewUrl: string;
+  } | null>(null);
+  const avatarInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setSalary(String(compensation?.salary_amount ?? 0));
@@ -196,6 +202,13 @@ function PersonDialog({
     setCurrency(compensation?.currency ?? "USD");
     setHours(String(compensation?.standard_hours ?? 160));
   }, [compensation]);
+
+  useEffect(
+    () => () => {
+      if (avatarSelection) URL.revokeObjectURL(avatarSelection.previewUrl);
+    },
+    [avatarSelection],
+  );
 
   const refreshPeople = () => queryClient.invalidateQueries({ queryKey: ["people"] });
   const refreshRoles = () => {
@@ -235,6 +248,16 @@ function PersonDialog({
         admin_notes: adminNotes,
       });
       if (!parsed.success) throw new Error(firstValidationError(parsed.error));
+      if (avatarSelection && !isAllowedAvatar(avatarSelection.file)) {
+        throw new Error(t("Use JPG, PNG or WebP under 5 MB"));
+      }
+      const currentAvatar = avatarSelection
+        ? await supabase.from("profiles").select("avatar_path").eq("id", person.id).single()
+        : null;
+      if (currentAvatar?.error) throw currentAvatar.error;
+      const uploaded = avatarSelection
+        ? await uploadAvatarFile(person.id, avatarSelection.file)
+        : null;
       const { error } = await supabase
         .from("profiles")
         .update({
@@ -242,13 +265,22 @@ function PersonDialog({
           job_title: parsed.data.job_title ?? null,
           resume: parsed.data.resume ?? null,
           admin_notes: parsed.data.admin_notes ?? null,
+          ...(uploaded ? { avatar_url: uploaded.url, avatar_path: uploaded.path } : {}),
         })
         .eq("id", parsed.data.user_id);
-      if (error) throw error;
+      if (error) {
+        if (uploaded) await supabase.storage.from(AVATAR_BUCKET).remove([uploaded.path]);
+        throw error;
+      }
+      if (uploaded) {
+        const previous = currentAvatar?.data.avatar_path;
+        if (previous) await supabase.storage.from(AVATAR_BUCKET).remove([previous]);
+      }
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t("Staff details updated"));
-      refreshPeople();
+      await refreshPeople();
+      setAvatarSelection(null);
     },
     onError: (error) => showError(error, t),
   });
@@ -331,8 +363,11 @@ function PersonDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3 pr-6">
-                <Avatar className="size-10 border border-border">
-                  <AvatarImage src={person.avatar_url ?? undefined} alt="" />
+                <Avatar className="size-14 border border-border">
+                  <AvatarImage
+                    src={avatarSelection?.previewUrl ?? person.avatar_url ?? undefined}
+                    alt=""
+                  />
                   <AvatarFallback className="text-xs font-semibold">
                     {personInitials(person.full_name, person.email)}
                   </AvatarFallback>
@@ -347,6 +382,44 @@ function PersonDialog({
                   .join(" · ") || t("Staff details")}
               </DialogDescription>
             </DialogHeader>
+
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/30 p-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{t("Staff avatar")}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {avatarSelection
+                    ? `${avatarSelection.file.name} · ${t("Selected photo uploads when staff details are saved.")}`
+                    : t("Use JPG, PNG or WebP under 5 MB")}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={detailsMutation.isPending}
+                onClick={() => avatarInput.current?.click()}
+              >
+                <ImagePlus />
+                {t(person.avatar_url || avatarSelection ? "Change photo" : "Upload photo")}
+              </Button>
+              <input
+                ref={avatarInput}
+                type="file"
+                accept={AVATAR_ACCEPT}
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    if (isAllowedAvatar(file)) {
+                      setAvatarSelection({ file, previewUrl: URL.createObjectURL(file) });
+                    } else {
+                      toast.error(t("Use JPG, PNG or WebP under 5 MB"));
+                    }
+                  }
+                  event.target.value = "";
+                }}
+              />
+            </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Full name" id={`name-${person.id}`}>

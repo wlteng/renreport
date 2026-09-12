@@ -12,23 +12,11 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/useSession";
 import { useDepartments } from "@/hooks/useData";
-import { compressImage } from "@/lib/images";
+import { AVATAR_ACCEPT, AVATAR_BUCKET, isAllowedAvatar, uploadAvatarFile } from "@/lib/avatars";
 import { personInitials } from "@/lib/people";
 import { ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/roles";
 import { useLanguage } from "@/lib/i18n";
 import { isStaffLoginEmail, staffLoginLabel } from "@/lib/staffAuth";
-
-const AVATAR_BUCKET = "avatars";
-const AVATAR_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
-
-/** Storage path behind a public avatar URL, or null when the URL is not ours. */
-function avatarPathFromUrl(url: string | null | undefined) {
-  if (!url) return null;
-  const marker = `/object/public/${AVATAR_BUCKET}/`;
-  const index = url.indexOf(marker);
-  return index === -1 ? null : decodeURIComponent(url.slice(index + marker.length));
-}
 
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({
@@ -78,27 +66,19 @@ function ProfilePage() {
   const uploadAvatar = useMutation({
     mutationFn: async (original: File) => {
       if (!user) throw new Error("Your session has expired");
-      if (!AVATAR_TYPES.has(original.type) || original.size > AVATAR_MAX_BYTES) {
+      if (!isAllowedAvatar(original)) {
         throw new Error(t("Use JPG, PNG or WebP under 5 MB"));
       }
-      const file = await compressImage(original, { maxSize: 512, quality: 0.85 });
-      const extension =
-        file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-      const path = `${user.id}/${Date.now()}.${extension}`;
-      const { error } = await supabase.storage
-        .from(AVATAR_BUCKET)
-        .upload(path, file, { contentType: file.type, upsert: false });
-      if (error) throw error;
-      const url = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path).data.publicUrl;
+      const { path, url } = await uploadAvatarFile(user.id, original);
       const { error: updateError } = await supabase
         .from("profiles")
-        .update({ avatar_url: url })
+        .update({ avatar_url: url, avatar_path: path })
         .eq("id", user.id);
       if (updateError) {
         await supabase.storage.from(AVATAR_BUCKET).remove([path]);
         throw updateError;
       }
-      const previous = avatarPathFromUrl(profile?.avatar_url);
+      const previous = profile?.avatar_path;
       if (previous) await supabase.storage.from(AVATAR_BUCKET).remove([previous]);
     },
     onSuccess: () => {
@@ -112,10 +92,10 @@ function ProfilePage() {
   const removeAvatar = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Your session has expired");
-      const previous = avatarPathFromUrl(profile?.avatar_url);
+      const previous = profile?.avatar_path;
       const { error } = await supabase
         .from("profiles")
-        .update({ avatar_url: null })
+        .update({ avatar_url: null, avatar_path: null })
         .eq("id", user.id);
       if (error) throw error;
       if (previous) await supabase.storage.from(AVATAR_BUCKET).remove([previous]);
@@ -191,7 +171,7 @@ function ProfilePage() {
               <input
                 ref={avatarInput}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={AVATAR_ACCEPT}
                 className="sr-only"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
